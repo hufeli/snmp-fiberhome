@@ -89,27 +89,28 @@ const OIDs = {
 
 /* Válido para números de tamanho máx. == 16383 em decimal */
 function oidDecodeHexToInt(hexValue) {
-    var hex = hexValue.replaceAll(' ', '')
-    var bin = (parseInt(hex, 16).toString(2)).padStart(8, '0')
+    const hex = hexValue.replaceAll(' ', '')
+    let bin = (parseInt(hex, 16).toString(2)).padStart(8, '0')
     bin = bin.split('')
     bin[0] = '0'
-    for (var i = 8; i >= 0; --i)
+    for (let i = 8; i >= 0; --i)
         bin[i] = bin[i - 1]
     bin = bin.join('')
-    var dec = parseInt(bin, 2)
+    const dec = parseInt(bin, 2)
     return dec
 }
 
 /* Válido para números de tamanho máx. == 16383 em decimal */
 function oidEncodeIntToHex(intValue) {
-    var bin = null
+    let bin = null
+    let hex = null
     if (intValue > 0 && intValue <= 127) {
         bin = ("00000000" + (intValue.toString(2))).slice(-8)
         hex = parseInt(bin, 2).toHex(2)
     } else if (intValue > 127 && intValue <= 16383) {
         bin = ("0000000000000000" + (intValue.toString(2))).slice(-16)
         bin = bin.split('')
-        for (var i = 0; i < 8; ++i)
+        for (let i = 0; i < 8; ++i)
             bin[i] = bin[i + 1]
 
         bin[8] = '0'
@@ -127,8 +128,8 @@ function oidEncodeIntToHex(intValue) {
 }
 
 function oidEncodeStrToHex(oidStr) {
-    var hex = ''
-    var oid = oidStr.split('.')
+    let hex = ''
+    const oid = oidStr.split('.')
     if (oid[0] == parseInt(1) && oid[1] == parseInt(3)) {
         oid.splice(0, 2)        // remove
         hex = '2b'              // 2b = 1.3

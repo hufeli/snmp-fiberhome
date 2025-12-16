@@ -2160,7 +2160,6 @@ async function getLanPortsEPON(options, slot, pon, onuId) {
                                 resp.push(lan)
                             }
                             return resp
-                } else return false
             } else return false
         } catch (error) {
             return false
@@ -2340,7 +2339,6 @@ async function getLanPortsGPON(options, slot, pon, onuId) {
                                 resp.push(lan)
                             }
                             return resp
-                } else return false
             } else return false
         } catch (error) {
             return false
@@ -2350,34 +2348,28 @@ async function getLanPortsGPON(options, slot, pon, onuId) {
     }
 }
 
-function enableLanPorts(options, slot, pon, onuId, aLanPorts) {
-    return new Promise((resolve, reject) => {
-        try {
-            getLanPorts(options, slot, pon, onuId).then(lanPorts => {
-                if (lanPorts && aLanPorts && aLanPorts.length > 0) {
-                    aLanPorts.forEach(v => {
-                        var idx = lanPorts.findIndex(e => e.lanPort == v.lanPort || (e.lanPort == 1 && !v.lanPort))
-                        if (idx > -1)
-                            lanPorts[idx].enablePort = v.enablePort
-                    })
-                    setLanPorts(options, slot, pon, onuId, lanPorts).then(onuIndex => {
-                        return resolve(onuIndex)
-                    })
-                } else
-                    return resolve(false)
+async function enableLanPorts(options, slot, pon, onuId, aLanPorts) {
+    try {
+        const lanPorts = await getLanPorts(options, slot, pon, onuId)
+        if (lanPorts && aLanPorts && aLanPorts.length > 0) {
+            aLanPorts.forEach(v => {
+                var idx = lanPorts.findIndex(e => e.lanPort == v.lanPort || (e.lanPort == 1 && !v.lanPort))
+                if (idx > -1)
+                    lanPorts[idx].enablePort = v.enablePort
             })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+            return await setLanPorts(options, slot, pon, onuId, lanPorts)
+        } else
+            return false
+    } catch (err) {
+        throw err
+    }
 }
 
-function setWan(options, slot, pon, onuId, wanProfiles) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId && wanProfiles && wanProfiles.length > 0) {
-                    var header = snmp_fh.setWanHeader
+async function setWan(options, slot, pon, onuId, wanProfiles) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon, onuId)
+        if (isValid && slot && pon && onuId && wanProfiles && wanProfiles.length > 0) {
+            var header = snmp_fh.setWanHeader
                     var body = snmp_fh.setWanBody
                     header = header.split(' ')
                     header[159] = '01'
@@ -2488,19 +2480,13 @@ function setWan(options, slot, pon, onuId, wanProfiles) {
                         resp = resp + ' ' + str
                     })
 
-                    snmp_fh.sendSnmp(OID.setWan, resp, options, true).then(ret => {
-                        snmp_fh.sendSnmp(OID.confirmSetWan, resp, options, true).then(retConfirm => {
-                            return resolve(convertToOnuIndex(slot, pon, onuId))
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+                    await snmp_fh.sendSnmp(OID.setWan, resp, options, true)
+                    await snmp_fh.sendSnmp(OID.confirmSetWan, resp, options, true)
+                    return convertToOnuIndex(slot, pon, onuId)
+            } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
 

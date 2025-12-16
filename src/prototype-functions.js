@@ -2,14 +2,16 @@ function isNumeric(n) {
     return !isNaN(parseFloat(n)) && isFinite(n)
 }
 
-String.prototype.replaceAll = function (search, replacement) {
-    var target = this
-    return target.split(search).join(replacement)
+if (!String.prototype.replaceAll) {
+    String.prototype.replaceAll = function (search, replacement) {
+        const target = this
+        return target.split(search).join(replacement)
+    }
 }
 
 String.prototype.strToHex = function () {
-    var hex, i
-    var result = ""
+    let hex, i
+    let result = ""
     for (i = 0; i < this.length; i++) {
         hex = this.charCodeAt(i).toString(16)
         result += ("00" + hex).slice(-2) + ' '
@@ -27,9 +29,9 @@ String.prototype.toHex = function (fieldLength) {
 }
 
 String.prototype.hexToStr = function () {
-    var j
-    var hexes = this.match(/.{1,4}/g) || []
-    var back = ""
+    let j
+    const hexes = this.match(/.{1,4}/g) || []
+    let back = ""
     for (j = 0; j < hexes.length; j++) {
         back += String.fromCharCode(parseInt(hexes[j], 16))
     }
@@ -37,7 +39,7 @@ String.prototype.hexToStr = function () {
 }
 
 Array.prototype.formatField = function (initialPosition, content, toFill, _length) {
-    var str = ''
+    let str = ''
     if (content)
         content.split('').forEach(e => {
             str += (e.charCodeAt().toString(16) + ' ')
@@ -47,7 +49,7 @@ Array.prototype.formatField = function (initialPosition, content, toFill, _lengt
 
     str = str.trim().padEnd((1 + toFill.length) * _length, ' ' + toFill).trim()
     str = str.split(' ')
-    for (var i = 0; i < _length; ++i)
+    for (let i = 0; i < _length; ++i)
         this[initialPosition + i] = str[i]
 
     return this

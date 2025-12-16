@@ -3,7 +3,7 @@ const dgram = require("dgram")
 const oid_fh = require('./oid-fh')
 const snmp = require('net-snmp')
 
-var version = {
+const version = {
     SNMPv1: 0,
     SNMPv2c: 1,
     SNMPv3: 3
@@ -25,7 +25,7 @@ const defaultOptions = {
     
 }
 
-var dataType = {
+const dataType = {
     Sequence: '30',
     GetResponsePDU: 'a0',
     GetResponsePDU: 'a2',
@@ -67,10 +67,10 @@ function createPackage(objSNMP, requestId = 6189) {
     // se tam. total do pacote > 255, entao:  82 XY ZW  ; onde XY ZW é o inteiro de 2 bytes convertidos para hex. que representa o tam. do pacote - 3 (head)       
 
     /* Calculando tamanho dos sub pacotes */
-    var packageSize = 0
+    let packageSize = 0
     objSNMP.pdu.varbindList.size = 0
     objSNMP.pdu.varbindList.forEach(varbind => {
-        var varbindSize = 0
+        let varbindSize = 0
         varbind.value.size = varbind.value.value.replaceAll(' ', '').split('').length / 2
         varbindSize += varbind.value.size
 
@@ -117,7 +117,7 @@ function createPackage(objSNMP, requestId = 6189) {
     packageSize += /*type:*/1 + /*0x8? e TAM_value_bytes:*/2
 
     /* Construcao do pacote SNMP */
-    var raw = ''
+    let raw = ''
     raw += `${dataType.Sequence} `
 
     if (objSNMP.size > 255)
@@ -179,9 +179,9 @@ function createPackage(objSNMP, requestId = 6189) {
 
 function sendSnmp(oid, value, opt, waitResponse = false) {
     return new Promise((resolve, reject) => {
-        var options = { ...defaultOptions, ...opt }
-        var client = dgram.createSocket("udp4")
-        var objSNMP = {
+        const options = { ...defaultOptions, ...opt }
+        const client = dgram.createSocket("udp4")
+        const objSNMP = {
             version: version.SNMPv2c.toHex(2),
             community: options.community,
             pdu: {
@@ -199,8 +199,8 @@ function sendSnmp(oid, value, opt, waitResponse = false) {
                 }]
             }
         }
-        var package = createPackage(objSNMP)
-        var packageFormated = Buffer.from(package.replaceAll(' ', ''), "hex")
+        const pkg = createPackage(objSNMP)
+        const packageFormatted = Buffer.from(pkg.replaceAll(' ', ''), "hex")
         client.once("message", function (msg, rinfo) {
             client.close()
             if (waitResponse)
@@ -215,7 +215,7 @@ function sendSnmp(oid, value, opt, waitResponse = false) {
         client.once("close", function () {
             //console.log("closed.")
         })
-        client.send(packageFormated, 0, packageFormated.length, options.port, options.ip || options.host, function (err, bytes) {
+        client.send(packageFormatted, 0, packageFormatted.length, options.port, options.ip || options.host, function (err, bytes) {
             if (!waitResponse)
                 return resolve(true)
         })
@@ -224,9 +224,9 @@ function sendSnmp(oid, value, opt, waitResponse = false) {
 
 function subtree(opt, oid) {
     return new Promise((resolve, reject) => {
-        var options = { ...defaultOptions, ...opt }
-        var aVarbinds = []
-        var session = snmp.createSession(options.ip || options.host, options.community, options)
+        const options = { ...defaultOptions, ...opt }
+        const aVarbinds = []
+        const session = snmp.createSession(options.ip || options.host, options.community, options)
         session.subtree(oid, options.maxRepetitions, function feedCb(varbinds) {
             aVarbinds.push(...varbinds)
         }, function doneCb(error) {
@@ -240,8 +240,8 @@ function subtree(opt, oid) {
 
 function get(opt, oids) {
     return new Promise((resolve, reject) => {
-        var options = { ...defaultOptions, ...opt }
-        var session = snmp.createSession(options.ip || options.host, options.community, options)
+        const options = { ...defaultOptions, ...opt }
+        const session = snmp.createSession(options.ip || options.host, options.community, options)
         session.get(oids, function (error, varbinds) {
             if (error) {
                 return reject(error)
@@ -257,11 +257,11 @@ function get(opt, oids) {
 function set(opt, _oids) 
 {
     return new Promise((resolve, reject) => {
-        let options = { ...defaultOptions, ...opt }
-        let session = snmp.createSession(options.ip || options.host, options.community, options)
-        let oids = [];
+        const options = { ...defaultOptions, ...opt }
+        const session = snmp.createSession(options.ip || options.host, options.community, options)
+        const oids = [];
         _oids.map((oid) => {
-            let _oid = Object.assign({}, oid);
+            const _oid = Object.assign({}, oid);
             switch (_oid.type) {
                 case 'octet-string':
                     _oid.type = snmp.ObjectType.OctetString
@@ -276,7 +276,7 @@ function set(opt, _oids)
             if (error) {
                 return reject(error)
             } else {
-                for (var i = 0; i < varbinds.length; i++) {
+                for (let i = 0; i < varbinds.length; i++) {
                     // for version 1 we can assume all OIDs were successful
                     console.log (varbinds[i].oid + "|" + varbinds[i].value);
                 
