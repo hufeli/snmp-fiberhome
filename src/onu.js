@@ -1433,12 +1433,12 @@ async function setLanPorts(options, slot, pon, onuId, aLanPorts) {
     }
 }
 
-function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
-    return new Promise((resolve, reject) => {
+async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
+    try {
         try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId && aLanPorts && aLanPorts.length > 0) {
-                    getLanPorts(options, slot, pon, onuId).then(respLanPorts => {
+            const isValid = await gFunc.isValid(options, slot, pon, onuId)
+            if (isValid && slot && pon && onuId && aLanPorts && aLanPorts.length > 0) {
+                const respLanPorts = await getLanPorts(options, slot, pon, onuId)
                         if (respLanPorts.length > 0) {
                             // Realizando merge entre os parametros de entrada e os já configurados na ONU 
                             hexTosend = ''
@@ -1731,30 +1731,26 @@ function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                             headerLanPorts = headerLanPorts.join(' ')
                             hexTosend = headerLanPorts + ' ' + hexTosend
 
-                            snmp_fh.sendSnmp(OID.setLanPortsEPON, hexTosend, options, true).then(ret => {
-                                snmp_fh.sendSnmp(OID.confirmSetLanPortsEPON, hexTosend, options, true).then(retConfirm => {
-                                    return resolve(convertToOnuIndex(slot, pon, onuId))
-                                })
-                            })
+                            await snmp_fh.sendSnmp(OID.setLanPortsEPON, hexTosend, options, true)
+                            await snmp_fh.sendSnmp(OID.confirmSetLanPortsEPON, hexTosend, options, true)
+                            return convertToOnuIndex(slot, pon, onuId)
                         } else
-                            return resolve(false)
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
+                            return false
+            } else return false
+        } catch (error) {
+            return false
         }
-    })
+    } catch (err) {
+        throw err
+    }
 }
 
-function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
-    return new Promise((resolve, reject) => {
+async function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
+    try {
         try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId && aLanPorts && aLanPorts.length > 0) {
-                    getLanPorts(options, slot, pon, onuId).then(respLanPorts => {
+            const isValid = await gFunc.isValid(options, slot, pon, onuId)
+            if (isValid && slot && pon && onuId && aLanPorts && aLanPorts.length > 0) {
+                const respLanPorts = await getLanPorts(options, slot, pon, onuId)
                         if (respLanPorts.length > 0) {
                             // Realizando merge entre os parametros de entrada e os já configurados na ONU 
                             hexTosend = ''
@@ -1954,58 +1950,41 @@ function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
 
                             headerLanPorts = headerLanPorts.join(' ')
                             hexTosend = headerLanPorts + ' ' + hexTosend
-                            snmp_fh.sendSnmp(OID.setLanPorts, hexTosend, options, true).then(ret => {
-                                snmp_fh.sendSnmp(OID.confirmSetLanPorts, hexTosend, options, true).then(retConfirm => {
-                                    return resolve(convertToOnuIndex(slot, pon, onuId))
-                                })
-                            })
+                            await snmp_fh.sendSnmp(OID.setLanPorts, hexTosend, options, true)
+                            await snmp_fh.sendSnmp(OID.confirmSetLanPorts, hexTosend, options, true)
+                            return convertToOnuIndex(slot, pon, onuId)
                         } else
-                            return resolve(false)
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
+                            return false
+            } else return false
+        } catch (error) {
+            return false
         }
-    })
+    } catch (err) {
+        throw err
+    }
 }
 
-function getLanPorts(options, slot, pon, onuId) {
-    return new Promise((resolve, reject) => {
-        try {
-            getOnuType(options, slot, pon, onuId).then(onuType => {
-                if (onuType && onuType.type == 'GPON')
-                    getLanPortsGPON(options, slot, pon, onuId).then(resp => {
-                        return resolve(resp)
-                    }, errorEPON => {
-                        return reject(errorEPON)
-                    })
-                else if (onuType && onuType.type == 'EPON')
-                    getLanPortsEPON(options, slot, pon, onuId).then(resp => {
-                        return resolve(resp)
-                    }, errorGPON => {
-                        return reject(errorGPON)
-                    })
-                else {
-                    console.error("getLanPorts(): The ONU type was not identified as GPON or EPON in 'src/tables.js' -> 'ONUType'. Use the getLanPortsGPON (options, slot, pon, onuId) or getLanPortsEPON (options, slot, pon, onuId) function.")
-                }
-            }, err => {
-                return reject(err)
-            })
-        } catch (err) {
-            return reject(err)
+async function getLanPorts(options, slot, pon, onuId) {
+    try {
+        const onuType = await getOnuType(options, slot, pon, onuId)
+        if (onuType && onuType.type == 'GPON')
+            return await getLanPortsGPON(options, slot, pon, onuId)
+        else if (onuType && onuType.type == 'EPON')
+            return await getLanPortsEPON(options, slot, pon, onuId)
+        else {
+            console.error("getLanPorts(): The ONU type was not identified as GPON or EPON in 'src/tables.js' -> 'ONUType'. Use the getLanPortsGPON (options, slot, pon, onuId) or getLanPortsEPON (options, slot, pon, onuId) function.")
         }
-    })
+    } catch (err) {
+        throw err
+    }
 }
 
-function getLanPortsEPON(options, slot, pon, onuId) {
-    return new Promise((resolve, reject) => {
+async function getLanPortsEPON(options, slot, pon, onuId) {
+    try {
         try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId) {
-                    var getLanPorts = snmp_fh.getLanPorts
+            const isValid = await gFunc.isValid(options, slot, pon, onuId)
+            if (isValid && slot && pon && onuId) {
+                var getLanPorts = snmp_fh.getLanPorts
                     getLanPorts = getLanPorts.split(' ')
 
                     getLanPorts[156] = slot.toHex(2)
@@ -2013,8 +1992,8 @@ function getLanPortsEPON(options, slot, pon, onuId) {
                     getLanPorts[160] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.
                     getLanPorts = getLanPorts.join(' ')
 
-                    snmp_fh.sendSnmp(OID.setLanPortsEPON, getLanPorts, options, true).then(ret => {
-                        snmp_fh.sendSnmp(OID.confirmSetLanPortsEPON, getLanPorts, options, true).then(confirm => {
+                    const ret = await snmp_fh.sendSnmp(OID.setLanPortsEPON, getLanPorts, options, true)
+                    await snmp_fh.sendSnmp(OID.confirmSetLanPortsEPON, getLanPorts, options, true)
                             var hex = '' // Adicionando espaço em branco a cada 2 bytes
                             for (var i = 0; i < ret.length; i += 2)
                                 hex += ret.substring(i, i + 2) + ' '
@@ -2180,25 +2159,23 @@ function getLanPortsEPON(options, slot, pon, onuId) {
                                 bodyLans = bodyLans.slice(18)               // tamanho do footer
                                 resp.push(lan)
                             }
-                            return resolve(resp)
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
+                            return resp
+                } else return false
+            } else return false
+        } catch (error) {
+            return false
         }
-    })
+    } catch (err) {
+        throw err
+    }
 }
 
-function getLanPortsGPON(options, slot, pon, onuId) {
-    return new Promise((resolve, reject) => {
+async function getLanPortsGPON(options, slot, pon, onuId) {
+    try {
         try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId) {
-                    var getLanPorts = snmp_fh.getLanPorts
+            const isValid = await gFunc.isValid(options, slot, pon, onuId)
+            if (isValid && slot && pon && onuId) {
+                var getLanPorts = snmp_fh.getLanPorts
                     getLanPorts = getLanPorts.split(' ')
 
                     getLanPorts[156] = slot.toHex(2)
@@ -2206,8 +2183,8 @@ function getLanPortsGPON(options, slot, pon, onuId) {
                     getLanPorts[160] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.
                     getLanPorts = getLanPorts.join(' ')
 
-                    snmp_fh.sendSnmp(OID.setLanPorts, getLanPorts, options, true).then(ret => {
-                        snmp_fh.sendSnmp(OID.confirmSetLanPorts, getLanPorts, options, true).then(confirm => {
+                    const ret = await snmp_fh.sendSnmp(OID.setLanPorts, getLanPorts, options, true)
+                    await snmp_fh.sendSnmp(OID.confirmSetLanPorts, getLanPorts, options, true)
                             var hex = '' // Adicionando espaço em branco a cada 2 bytes
                             for (var i = 0; i < ret.length; i += 2)
                                 hex += ret.substring(i, i + 2) + ' '
@@ -2362,17 +2339,15 @@ function getLanPortsGPON(options, slot, pon, onuId) {
                                 bodyLans = bodyLans.slice(30)
                                 resp.push(lan)
                             }
-                            return resolve(resp)
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
+                            return resp
+                } else return false
+            } else return false
+        } catch (error) {
+            return false
         }
-    })
+    } catch (err) {
+        throw err
+    }
 }
 
 function enableLanPorts(options, slot, pon, onuId, aLanPorts) {
