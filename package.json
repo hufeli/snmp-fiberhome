@@ -27,10 +27,8 @@
     "url": "git+https://github.com/tqandrade/snmp-fiberhome.git"
   },
   "dependencies": {
-    "net-snmp": "^1.2.4",
-    "promise-queue": "^2.2.5",
-    "string.prototype.padstart": "^3.0.0",
-    "vow": "^0.4.20"
+    "net-snmp": "^3.6.3",
+    "promise-queue": "^2.2.5"
   },
   "devDependencies": {
     "tap-spec": "^5.0.0",

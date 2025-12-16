@@ -6,7 +6,7 @@ const olt = require('./olt')
 const gFunc = require('./global-functions')
 
 const Queue = require("promise-queue")
-Queue.configure(require('vow').Promise)
+Queue.configure(Promise)
 
 const OID = oid_fh.OIDs
 const queueTime = 50           // Tempo para iniciar o processamento na fila 
@@ -78,256 +78,197 @@ const lanPortDefault = {
         tpId: 33024
     }
 }
-var veipDefault = {
-    tls: 0,
-    cvlan: 100,
-    cvlan_cos: 65535,
-    tvlan: 65535,
-    tvlan_cos: 65535,
-    svlan: 65535,
-    svlan_cos: 65535,
-    us_band_width: 0,
-    ds_band_width: 0,
-    profile_name: null,
-};
 
-function addAllOnus(options, wanProfiles, lanPortProfiles) {
+async function addAllOnus(options, wanProfiles, lanPortProfiles) {
     var queue = new Queue(1, 10000)
     var aAuthOnus = []
-    return new Promise((resolve, reject) => {
-        try {
-            getUnauthorizedOnus(options).then(result => {
-                if (result === false)
-                    return resolve(false)
-                if (result.length > 0) {
-                    if (options.enableLogs)
-                        console.log(`Unauthorized ONUs found: ${result.length} \nadd...`)
-                    result.forEach(onu => {
-                        queue.add(f => addOnu(options, onu, wanProfiles, lanPortProfiles)).then(onuAuth => {
-                            aAuthOnus.push(onuAuth)
-                            if (options.enableLogs)
-                                console.log('\t' + onuAuth.macAddress + ' - OK')
-                            if (result.length == aAuthOnus.length)
-                                return resolve(aAuthOnus)
-                        })
-                    })
-                } else {
-                    if (options.enableLogs)
-                        console.log(`Unauthorized ONUs found: 0`)
-                    return resolve([])
-                }
-            }, error => {
-                return resolve(false)
+    try {
+        const result = await getUnauthorizedOnus(options).catch(error => false)
+        if (result === false)
+            return false
+        if (result.length > 0) {
+            if (options.enableLogs)
+                console.log(`Unauthorized ONUs found: ${result.length} \nadd...`)
+            
+            const promises = result.map(async onu => {
+                const onuAuth = await queue.add(() => addOnu(options, onu, wanProfiles, lanPortProfiles))
+                aAuthOnus.push(onuAuth)
+                if (options.enableLogs)
+                    console.log('\t' + onuAuth.macAddress + ' - OK')
+                return onuAuth
             })
-        } catch (err) {
-            console.error(err.toString())
-            return reject(err)
+            await Promise.all(promises)
+            return aAuthOnus
+        } else {
+            if (options.enableLogs)
+                console.log(`Unauthorized ONUs found: 0`)
+            return []
         }
-    })
+    } catch (err) {
+        console.error(err.toString())
+        throw err
+    }
 }
 
-function addOnu(options, onu, wanProfiles, lanPortProfiles) {
-    return new Promise((resolve, reject) => {
-        setTimeout(t => {
-            var onuForm = { slot: onu.slot, pon: onu.pon, macAddress: onu.macAddress }
-            try {
-                authorizeOnu(options, onu.slot, onu.pon, (onu.onuType && onu.onuType.code) || onu.onuTypeCode, onu.macAddress).then(ret => {
-                    if (ret === false)
-                        return resolve(false)
-                    getBasicOnuInfo(options, onu.macAddress, onu.slot, onu.pon).then(onuAuth => {
-                        if (onuAuth) {
-                            if (wanProfiles && wanProfiles.length > 0) {
-                                setWan(options, onuAuth.slot, onuAuth.pon, onuAuth.onuId, wanProfiles).then(onuIndex => {
-                                    if (lanPortProfiles && lanPortProfiles.length > 0)
-                                        setLanPorts(options, onuAuth.slot, onuAuth.pon, onuAuth.onuId, lanPortProfiles).then(onuIndex => {
-                                            return resolve({ ...ret, ...onuForm, ...parseOnuIndex(onuIndex) })
-                                        })
-                                    else
-                                        return resolve({ ...ret, ...onuForm, ...parseOnuIndex(onuIndex) })
-                                })
-                            } else if (lanPortProfiles && lanPortProfiles.length > 0) {
-                                setLanPorts(options, onuAuth.slot, onuAuth.pon, onuAuth.onuId, lanPortProfiles).then(onuIndex => {
-                                    return resolve({ ...ret, ...onuForm, ...parseOnuIndex(onuIndex) })
-                                })
-                            } else {
-                                return resolve({ _onuIndex: onuAuth.onuIndex, ...ret, ...onuForm, ...parseOnuIndex(onuAuth._onuIndex) })
-                            }
-                        } else
-                            return reject('Erro: macAddress para a onu não foi encontrado na OLT: ' + JSON.stringify(onu))
-                    })
-                })
-            } catch (excp) {
-                console.error(excp.toString())
+async function addOnu(options, onu, wanProfiles, lanPortProfiles) {
+    await new Promise(resolve => setTimeout(resolve, queueTime))
+    var onuForm = { slot: onu.slot, pon: onu.pon, macAddress: onu.macAddress }
+    try {
+        const ret = await authorizeOnu(options, onu.slot, onu.pon, (onu.onuType && onu.onuType.code) || onu.onuTypeCode, onu.macAddress)
+        if (ret === false)
+            return false
+        const onuAuth = await getBasicOnuInfo(options, onu.macAddress, onu.slot, onu.pon)
+        if (onuAuth) {
+            let onuIndex
+            if (wanProfiles && wanProfiles.length > 0) {
+                onuIndex = await setWan(options, onuAuth.slot, onuAuth.pon, onuAuth.onuId, wanProfiles)
+                if (lanPortProfiles && lanPortProfiles.length > 0)
+                    onuIndex = await setLanPorts(options, onuAuth.slot, onuAuth.pon, onuAuth.onuId, lanPortProfiles)
+            } else if (lanPortProfiles && lanPortProfiles.length > 0) {
+                onuIndex = await setLanPorts(options, onuAuth.slot, onuAuth.pon, onuAuth.onuId, lanPortProfiles)
+            } else {
+                return { _onuIndex: onuAuth.onuIndex, ...ret, ...onuForm, ...parseOnuIndex(onuAuth._onuIndex) }
             }
-        }, queueTime)
-    })
+            return { ...ret, ...onuForm, ...parseOnuIndex(onuIndex) }
+        } else
+            throw 'Erro: macAddress para a onu não foi encontrado na OLT: ' + JSON.stringify(onu)
+    } catch (excp) {
+        console.error(excp.toString())
+        throw excp
+    }
 }
 
-function authenticateOnu(options, slot, pon, onuTypeCode, macAddress) {
+async function authenticateOnu(options, slot, pon, onuTypeCode, macAddress) {
     console.error("authenticateOnu(): Deprecated function. Use 'authorizeOnu()'. The 'authenticateOnu()' will be deprecated in later versions")
-    return new Promise((resolve, reject) => {
-        authorizeOnu(options, slot, pon, onuTypeCode, macAddress).then(ret => {
-            return resolve(ret)
-        }, err => {
-            return reject(err)
-        })
-    })
+    return await authorizeOnu(options, slot, pon, onuTypeCode, macAddress)
 }
 
-function authorizeOnu(options, slot, pon, onuTypeCode, macAddress) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon).then(isValid => {
-                if (isValid && slot && pon && onuTypeCode && macAddress) {
-                    // Header
-                    var OID_Value = snmp_fh.auth
-                    OID_Value = OID_Value.split(' ')
-                    OID_Value[229] = slot.toHex(2)
-                    OID_Value[231] = pon.toHex(2)
+async function authorizeOnu(options, slot, pon, onuTypeCode, macAddress) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon).catch(() => false)
+        if (isValid && slot && pon && onuTypeCode && macAddress) {
+            // Header
+            var OID_Value = snmp_fh.auth
+            OID_Value = OID_Value.split(' ')
+            OID_Value[229] = slot.toHex(2)
+            OID_Value[231] = pon.toHex(2)
 
-                    // ONU Type Code
-                    var onuTypeCodeHex = onuTypeCode.toHex(4)
-                    OID_Value[232] = onuTypeCodeHex.slice(0, 2)
-                    OID_Value[233] = onuTypeCodeHex.slice(2, 4)
+            // ONU Type Code
+            var onuTypeCodeHex = onuTypeCode.toHex(4)
+            OID_Value[232] = onuTypeCodeHex.slice(0, 2)
+            OID_Value[233] = onuTypeCodeHex.slice(2, 4)
 
-                    // macAdrress or Serial
-                    for (var i = 0; i < 12; i++)
-                        OID_Value[158 + i] = macAddress.strToHex().split(' ')[i]
-                    OID_Value = OID_Value.join(' ')
-                    
-                    snmp_fh.sendSnmp(OID.setAuth, OID_Value, options, true).then(ret => {
-                        snmp_fh.sendSnmp(OID.confirmSetAuth, OID_Value, options, true).then(retConfirm => {
-                            return resolve({ slot, pon, onuType: table.ONUType[onuTypeCode], macAddress })
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+            // macAdrress or Serial
+            for (var i = 0; i < 12; i++)
+                OID_Value[158 + i] = macAddress.strToHex().split(' ')[i]
+            OID_Value = OID_Value.join(' ')
+
+            await snmp_fh.sendSnmp(OID.setAuth, OID_Value, options, true)
+            await snmp_fh.sendSnmp(OID.confirmSetAuth, OID_Value, options, true)
+            return { slot, pon, onuType: table.ONUType[onuTypeCode], macAddress }
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
 function convertToOnuIndex(slot, pon, onuId) {
     return (slot) * 2 ** 25 + (pon) * 2 ** 19 + (onuId) * 2 ** 8
 }
 
-function delOnu(options, slot, pon, onuId, onuIndex) {
-    return new Promise((resolve, reject) => {
-        try {
-            if (onuIndex)
-                delOnuByIndex(options, onuIndex)
-            else
-                getOnu(options, slot, pon, onuId).then(onu => {
-                    if (onu) {
-                        delOnuByMacAddress(options, onu.macAddress).then(ret => {
-                            return resolve(ret)
-                        })
-                    } else
-                        return resolve(false)
-                })
-        } catch (err) {
-            return reject(err)
+async function delOnu(options, slot, pon, onuId, onuIndex) {
+    try {
+        if (onuIndex)
+            return await delOnuByIndex(options, onuIndex)
+        else {
+            const onu = await getOnu(options, slot, pon, onuId)
+            if (onu) {
+                return await delOnuByMacAddress(options, onu.macAddress)
+            } else
+                return false
         }
-    })
+    } catch (err) {
+        throw err
+    }
 }
 
-function delOnuByIndex(options, onuIndex) {
-    return new Promise((resolve, reject) => {
-        try {
-            var onu = parseOnuIndex(onuIndex)
-            getOnu(options, onu.slot, onu.pon, onu.onuId).then(onuFound => {
-                if (onuFound && onuFound.macAddress) {
-                    delOnuByMacAddress(options, onuFound.macAddress).then(ret => {
-                        return resolve(ret)
-                    })
-                } else
-                    return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+async function delOnuByIndex(options, onuIndex) {
+    try {
+        var onu = parseOnuIndex(onuIndex)
+        const onuFound = await getOnu(options, onu.slot, onu.pon, onu.onuId)
+        if (onuFound && onuFound.macAddress) {
+            return await delOnuByMacAddress(options, onuFound.macAddress)
+        } else
+            return false
+    } catch (err) {
+        throw err
+    }
 }
 
-function delOnuByMacAddress(options, macAddress) {
-    return new Promise((resolve, reject) => {
-        try {
-            var delOnu = snmp_fh.delOnuByMacAddress
-            delOnu = delOnu.split(' ')
-            for (var i = 0; i < 12; i++)    // macAddress or serial
-                delOnu[158 + i] = macAddress.strToHex().split(' ')[i]
-            delOnu = delOnu.join(' ')
+async function delOnuByMacAddress(options, macAddress) {
+    try {
+        var delOnu = snmp_fh.delOnuByMacAddress
+        delOnu = delOnu.split(' ')
+        for (var i = 0; i < 12; i++)    // macAddress or serial
+            delOnu[158 + i] = macAddress.strToHex().split(' ')[i]
+        delOnu = delOnu.join(' ')
 
-            snmp_fh.sendSnmp(OID.delOnuByMacAddress, delOnu, options, true).then(ret => {
-                snmp_fh.sendSnmp(OID.confirmDelOnuByMacAddress, delOnu, options, true).then(retConfirm => {
-                    if (ret.split('').length > 370)
-                        return resolve(false)
-                    return resolve(macAddress)
-                })
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+        const ret = await snmp_fh.sendSnmp(OID.delOnuByMacAddress, delOnu, options, true)
+        await snmp_fh.sendSnmp(OID.confirmDelOnuByMacAddress, delOnu, options, true)
+        if (ret.split('').length > 370)
+            return false
+        return macAddress
+    } catch (err) {
+        throw err
+    }
 }
 
-function delWan(options, slot, pon, onuId) {
-    return new Promise((resolve, reject) => {
-        var delWan = snmp_fh.setWanHeader
-        delWan = delWan.split(' ')
-        // Tamanho do pacote
-        delWan[70] = '00'
-        delWan[71] = '3a'
-        delWan[122] = '00'
-        delWan[123] = '3a'
+async function delWan(options, slot, pon, onuId) {
+    var delWan = snmp_fh.setWanHeader
+    delWan = delWan.split(' ')
+    // Tamanho do pacote
+    delWan[70] = '00'
+    delWan[71] = '3a'
+    delWan[122] = '00'
+    delWan[123] = '3a'
 
-        delWan[159] = '01'
-        delWan[161] = slot.toHex(2)
-        delWan[163] = pon.toHex(2)
-        delWan[165] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.
-        delWan[181] = '00'                      // Quantidade de Wans
-        delWan = delWan.join(' ')
+    delWan[159] = '01'
+    delWan[161] = slot.toHex(2)
+    delWan[163] = pon.toHex(2)
+    delWan[165] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.
+    delWan[181] = '00'                      // Quantidade de Wans
+    delWan = delWan.join(' ')
 
-        var confirmDelWan = delWan.slice(0, -6)
-        confirmDelWan = confirmDelWan.split(' ')
-        confirmDelWan[59] = '00'
-        confirmDelWan[70] = '00'
-        confirmDelWan[71] = '38'
-        confirmDelWan[122] = '00'
-        confirmDelWan[123] = '38'
-        confirmDelWan = confirmDelWan.join(' ')
+    var confirmDelWan = delWan.slice(0, -6)
+    confirmDelWan = confirmDelWan.split(' ')
+    confirmDelWan[59] = '00'
+    confirmDelWan[70] = '00'
+    confirmDelWan[71] = '38'
+    confirmDelWan[122] = '00'
+    confirmDelWan[123] = '38'
+    confirmDelWan = confirmDelWan.join(' ')
 
-        getWan(options, slot, pon, onuId).then(wanProfilesBefore => {
-            snmp_fh.sendSnmp(OID.setWan, delWan, options, true).then(ret => {
-                snmp_fh.sendSnmp(OID.confirmSetWan, confirmDelWan, options, true).then(retConfirm => {
-                    getWan(options, slot, pon, onuId).then(wanProfilesAfter => {
-                        if (wanProfilesBefore.length == wanProfilesAfter.length)
-                            return resolve(false)
-                        return resolve(true)
-                    })
-                })
-            })
+    const wanProfilesBefore = await getWan(options, slot, pon, onuId)
+    await snmp_fh.sendSnmp(OID.setWan, delWan, options, true)
+    await snmp_fh.sendSnmp(OID.confirmSetWan, confirmDelWan, options, true)
+    const wanProfilesAfter = await getWan(options, slot, pon, onuId)
+    
+    if (wanProfilesBefore.length == wanProfilesAfter.length)
+        return false
+    return true
+}
+
+async function getAuthorizedOnus(options) {
+    try {
+        const serialList = await getMacAddressList(options)
+        var onuList = []
+        serialList.map(onu => {
+            onuList.push({ ...onu, ...parseOnuIndex(onu._onuIndex) })
         })
-    })
-}
-
-function getAuthorizedOnus(options) {
-    return new Promise((resolve, reject) => {
-        try {
-            getMacAddressList(options).then(serialList => {
-                var onuList = []
-                serialList.map(onu => {
-                    onuList.push({ ...onu, ...parseOnuIndex(onu._onuIndex) })
-                })
-                return resolve(onuList)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+        return onuList
+    } catch (err) {
+        throw err
+    }
 }
 
 function formatVarbindList(varbindList, type) {
@@ -364,1120 +305,987 @@ function formatVarbindList(varbindList, type) {
     return aONUs
 }
 
-function getOnuBandwidth(options, slot, pon, onuId) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId) {
-                    var getBW = snmp_fh.getOnuBandwidth
-                    getBW = getBW.split(' ')
-                    getBW[161] = slot.toHex(2)
-                    getBW[163] = pon.toHex(2)
-                    getBW[165] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.  
-                    getBW[151] = getBW[161]
-                    getBW[153] = getBW[163]
-                    getBW = getBW.join(' ')
-                    snmp_fh.sendSnmp(OID.getOnuBandwidth, getBW, options, true).then(ret => {
-                        var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                        for (var i = 0; i < ret.length; i += 2)
-                            hex += ret.substring(i, i + 2) + ' '
-                        hex = hex.trim()
-                        var value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 01 01 01 28 01 ')[1]
-                        value = value.split(' ')
-                        if (value[1] == '81')
-                            value = value.splice(3)
-                        else
-                            value = value.splice(4)
-
-                        var upBw = value[185] + value[186] + value[187]
-                        var downBw = value[189] + value[190] + value[191]
-                        upBw = parseInt(upBw, 16)
-                        downBw = parseInt(downBw, 16)
-                        snmp_fh.sendSnmp(OID.confirmSetOnuBandwidth, getBW, options, true).then(retConfirm => {
-                            return resolve({ _onuIndex: convertToOnuIndex(slot, pon, onuId), slot, pon, onuId, upBw, downBw, bandwidthUnit: 'Kbit/s' })
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getOnu(options, slot, pon, onuId, toIgnore, lite) {
-    return new Promise((resolve, reject) => {
-        try {
-            var onuIndex = convertToOnuIndex(slot, pon, onuId)
-            if (lite)
-                getBasicOnuByIndex(options, onuIndex, toIgnore).then(onu => {
-                    return resolve(onu)
-                })
+async function getOnuBandwidth(options, slot, pon, onuId) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
+        if (isValid && slot && pon && onuId) {
+            var getBW = snmp_fh.getOnuBandwidth
+            getBW = getBW.split(' ')
+            getBW[161] = slot.toHex(2)
+            getBW[163] = pon.toHex(2)
+            getBW[165] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.  
+            getBW[151] = getBW[161]
+            getBW[153] = getBW[163]
+            getBW = getBW.join(' ')
+            
+            const ret = await snmp_fh.sendSnmp(OID.getOnuBandwidth, getBW, options, true)
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 01 01 01 28 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
             else
-                getOnuByIndex(options, onuIndex, toIgnore, lite).then(onu => {
-                    return resolve(onu)
-                })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+                value = value.splice(4)
+
+            var upBw = value[185] + value[186] + value[187]
+            var downBw = value[189] + value[190] + value[191]
+            upBw = parseInt(upBw, 16)
+            downBw = parseInt(downBw, 16)
+            await snmp_fh.sendSnmp(OID.confirmSetOnuBandwidth, getBW, options, true)
+            return { _onuIndex: convertToOnuIndex(slot, pon, onuId), slot, pon, onuId, upBw, downBw, bandwidthUnit: 'Kbit/s' }
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
-function getOnuByIndex(options, onuIndex, toIgnore, ignoreValid) {
-    if (!toIgnore)
-        toIgnore = []
-    return new Promise((resolve, reject) => {
-        try {
-            var _onu = parseOnuIndex(onuIndex)
-            gFunc.isValid(options, _onu.slot, _onu.pon, _onu.onuId, ignoreValid).then(isValid => {
-                if (isValid && onuIndex) {
-                    var oids = [OID.getOnuType, OID.getOnuIp, OID.getOnuSystemName, OID.getOnuLogicAuthId, OID.getOnuLogicAuthIdPass, OID.getOnuMacAddress, OID.getOnuStatus, OID.getOnuSoftwareVersion, OID.getOnuHardwareVersion, OID.getOnuFirmwareVersion, OID.getOnuRemoteRestart]
-                    oids = oids.map(oid => oid + '.' + onuIndex)
-                    snmp_fh.get(options, oids).then(data => {
-                        olt.getOltModel(options).then(oltData => {
-                            var oltModel = oltData.includes('5116') ? '5116' : oltData.includes('5516') ? '5516' : null
-                            var onu = { ..._onu }
-                            // Formatando/convertendo os dados
-                            data.forEach((o, idx) => {
-                                if (o.oid.split('.')[12] == 5)                          // OID.getOnuType
-                                    onu.onuType = table.ONUType[o.value] || 'not identified'
-                                else if (o.oid.split('.')[12] == 6 && o.value)          // OID.getOnuIp
-                                    onu.ip = o.value.toString()
-                                else if (o.oid.split('.')[12] == 7 && o.value)          // OID.getOnuSystemName
-                                    onu.systemName = o.value.toString()
-                                else if (o.oid.split('.')[12] == 8 && o.value)          // OID.getOnuLogicAuthId
-                                    onu.onuLogicAuthId = o.value.toString()
-                                else if (o.oid.split('.')[12] == 9 && o.value)          // OID.getOnuLogicAuthIdPass
-                                    onu.onuLogicAuthIdPass = o.value.toString()
-                                else if (o.oid.split('.')[12] == 10 && o.value)         // OID.getOnuMacAddress
-                                    onu.macAddress = o.value.toString()
-                                else if (o.oid.split('.')[12] == 11) {                  // OID.getOnuStatus
-                                    onu.onuStatusValue = o.value
-                                    onu.onuStatus = oltModel == '5116' ? table.onuStatus_5116[o.value] : oltModel == '5516' ? table.onuStatus_5516[o.value] : 'not identified'
-                                    // TODO: verificar se é NGPON e utilizar: table.onuStatus_5516_NGPON
-                                } else if (o.oid.split('.')[12] == 12 && o.value)       // OID.getOnuSoftwareVersion
-                                    onu.softwareVersion = o.value.toString()
-                                else if (o.oid.split('.')[12] == 13 && o.value)         // OID.getOnuHardwareVersion
-                                    onu.hardwareVersion = o.value.toString()
-                                else if (o.oid.split('.')[12] == 14 && o.value)         // OID.getOnuFirmwareVersion
-                                    onu.firmwareVersion = o.value.toString()
-                                else if (o.oid.split('.')[12] == 15 && o.value)         // OID.getOnuRemoteRestart
-                                    onu.remoteRestart = o.value.toString()
-
-                                if (idx == data.length - 1) {
-                                    if (!onu.slot)
-                                        return resolve(onu)
-                                    getOnuOpticalPower(options, onu.slot, onu.pon, onu.onuId, toIgnore.includes('getOnuOpticalPower'), ignoreValid).then(opticalPower => {
-                                        if (opticalPower)
-                                            onu.opticalPower = opticalPower
-                                        getOnuDistance(options, onu.slot, onu.pon, onu.onuId, ignoreValid).then(distance => {
-                                            onu.distance = distance
-                                            getOnuUplinkInterface(options, onu.slot, onu.pon, onu.onuId, toIgnore.includes('getOnuUplinkInterface'), ignoreValid).then(upLinkInterface => {
-                                                if (upLinkInterface)
-                                                    onu.upLinkInterface = upLinkInterface
-                                                getOnuLastOffTime(options, onu.slot, onu.pon, onu.onuId, ignoreValid).then(lastOffTime => {
-                                                    onu.lastOffTime = lastOffTime
-                                                    return resolve(onu)
-                                                })
-                                            })
-                                        })
-                                    })
-                                }
-                            })
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+async function getOnu(options, slot, pon, onuId, toIgnore, lite) {
+    try {
+        var onuIndex = convertToOnuIndex(slot, pon, onuId)
+        if (lite)
+            return await getBasicOnuByIndex(options, onuIndex, toIgnore)
+        else
+            return await getOnuByIndex(options, onuIndex, toIgnore, lite)
+    } catch (err) {
+        throw err
+    }
 }
 
-function getBasicOnuByIndex(options, onuIndex, toIgnore) {
+async function getOnuByIndex(options, onuIndex, toIgnore, ignoreValid) {
     if (!toIgnore)
         toIgnore = []
-    return new Promise((resolve, reject) => {
-        try {
-            var _onu = parseOnuIndex(onuIndex)
-            var oids = [OID.getOnuType, OID.getOnuMacAddress, OID.getOnuStatus]
+    try {
+        var _onu = parseOnuIndex(onuIndex)
+        const isValid = await gFunc.isValid(options, _onu.slot, _onu.pon, _onu.onuId, ignoreValid).catch(() => false)
+        if (isValid && onuIndex) {
+            var oids = [OID.getOnuType, OID.getOnuIp, OID.getOnuSystemName, OID.getOnuLogicAuthId, OID.getOnuLogicAuthIdPass, OID.getOnuMacAddress, OID.getOnuStatus, OID.getOnuSoftwareVersion, OID.getOnuHardwareVersion, OID.getOnuFirmwareVersion, OID.getOnuRemoteRestart]
             oids = oids.map(oid => oid + '.' + onuIndex)
-            snmp_fh.get(options, oids).then(data => {
-                olt.getOltModel(options).then(oltData => {
-                    var oltModel = oltData.includes('5116') ? '5116' : oltData.includes('5516') ? '5516' : null
-                    var onu = { ..._onu }
-                    // Formatando/convertendo os dados
-                    data.forEach((o, idx) => {
-                        if (o.oid.split('.')[12] == 5)                          // OID.getOnuType
-                            onu.onuType = table.ONUType[o.value] || 'not identified'
-                        else if (o.oid.split('.')[12] == 10 && o.value)         // OID.getOnuMacAddress
-                            onu.macAddress = o.value.toString()
-                        else if (o.oid.split('.')[12] == 11) {                  // OID.getOnuStatus
-                            onu.onuStatusValue = o.value
-                            onu.onuStatus = oltModel == '5116' ? table.onuStatus_5116[o.value] : oltModel == '5516' ? table.onuStatus_5516[o.value] : 'not identified'
-                            // TODO: verificar se é NGPON e utilizar: table.onuStatus_5516_NGPON
-                        }
-                        if (idx == data.length - 1) {
-                            if (!onu.slot)
-                                return resolve(onu)
-                            if (toIgnore.includes('getOnuDistance') && toIgnore.includes('getOnuLastOffTime'))
-                                return resolve(onu)
-                            else {
-                                getOnuDistance(options, onu.slot, onu.pon, onu.onuId, true).then(distance => {
-                                    onu.distance = distance
-                                    getOnuLastOffTime(options, onu.slot, onu.pon, onu.onuId, true).then(lastOffTime => {
-                                        onu.lastOffTime = lastOffTime
-                                        return resolve(onu)
-                                    })
-                                })
-                            }
-                        }
-                    })
+            
+            const data = await snmp_fh.get(options, oids)
+            const oltData = await olt.getOltModel(options)
+            var oltModel = oltData.includes('5116') ? '5116' : oltData.includes('5516') ? '5516' : null
+            var onu = { ..._onu }
+            
+            // Formatando/convertendo os dados
+            for (let idx = 0; idx < data.length; idx++) {
+                const o = data[idx]
+                if (o.oid.split('.')[12] == 5)                          // OID.getOnuType
+                    onu.onuType = table.ONUType[o.value] || 'not identified'
+                else if (o.oid.split('.')[12] == 6 && o.value)          // OID.getOnuIp
+                    onu.ip = o.value.toString()
+                else if (o.oid.split('.')[12] == 7 && o.value)          // OID.getOnuSystemName
+                    onu.systemName = o.value.toString()
+                else if (o.oid.split('.')[12] == 8 && o.value)          // OID.getOnuLogicAuthId
+                    onu.onuLogicAuthId = o.value.toString()
+                else if (o.oid.split('.')[12] == 9 && o.value)          // OID.getOnuLogicAuthIdPass
+                    onu.onuLogicAuthIdPass = o.value.toString()
+                else if (o.oid.split('.')[12] == 10 && o.value)         // OID.getOnuMacAddress
+                    onu.macAddress = o.value.toString()
+                else if (o.oid.split('.')[12] == 11) {                  // OID.getOnuStatus
+                    onu.onuStatusValue = o.value
+                    onu.onuStatus = oltModel == '5116' ? table.onuStatus_5116[o.value] : oltModel == '5516' ? table.onuStatus_5516[o.value] : 'not identified'
+                    // TODO: verificar se é NGPON e utilizar: table.onuStatus_5516_NGPON
+                } else if (o.oid.split('.')[12] == 12 && o.value)       // OID.getOnuSoftwareVersion
+                    onu.softwareVersion = o.value.toString()
+                else if (o.oid.split('.')[12] == 13 && o.value)         // OID.getOnuHardwareVersion
+                    onu.hardwareVersion = o.value.toString()
+                else if (o.oid.split('.')[12] == 14 && o.value)         // OID.getOnuFirmwareVersion
+                    onu.firmwareVersion = o.value.toString()
+                else if (o.oid.split('.')[12] == 15 && o.value)         // OID.getOnuRemoteRestart
+                    onu.remoteRestart = o.value.toString()
 
-                })
-            })
-
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getOnuBySerial(options, serial) {
-    return new Promise((resolve, reject) => {
-        try {
-            // TODO
-            return resolve(false)
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getBasicOnuInfo(options, macAddress, slot, pon) {
-    return new Promise((resolve, reject) => {
-        try {
-            if (macAddress && (!slot && !pon) || (macAddress && slot && pon)) {
-                if (slot && pon) {    // Busca otimizada
-                    gFunc.isValid(options, slot, pon).then(isValid => {
-                        if (isValid) {
-                            var aOnuOID = []
-                            for (var onuId = 1; onuId <= 128; ++onuId)
-                                aOnuOID.push(OID.getOnuMacAddress + '.' + convertToOnuIndex(slot, pon, onuId).toString())
-                            snmp_fh.get(options, aOnuOID).then(ret => {
-                                var idx = ret.findIndex(e => (e.value && e.value.toString().toLowerCase()) == macAddress.toLowerCase())
-                                if (idx > -1) {
-                                    var onuIndex = parseInt(ret[idx].oid.split(OID.getOnuMacAddress + '.')[1])
-                                    return resolve({ _onuIndex: onuIndex, ...parseOnuIndex(onuIndex), macAddress: ret[idx].value.toString() })
-                                } else
-                                    return resolve(false)
-                            })
-                        } else return resolve(false)
-                    }, error => {
-                        return resolve(false)
-                    })
-                } else {
-                    snmp_fh.subtree(options, OID.getOnuMacAddress).then(ret => {
-                        var idx = ret.findIndex(e => (e.value && e.value.toString().toLowerCase()) == macAddress.toLowerCase())
-                        if (idx > -1) {
-                            var onuIndex = parseInt(ret[idx].oid.split(OID.getOnuMacAddress + '.')[1])
-                            return resolve({ _onuIndex: onuIndex, ...parseOnuIndex(onuIndex), macAddress: ret[idx].value.toString() })
-                        } else
-                            return resolve(false)
-                    })
+                if (idx == data.length - 1) {
+                    if (!onu.slot)
+                        return onu
+                    
+                    const opticalPower = await getOnuOpticalPower(options, onu.slot, onu.pon, onu.onuId, toIgnore.includes('getOnuOpticalPower'), ignoreValid)
+                    if (opticalPower)
+                        onu.opticalPower = opticalPower
+                    
+                    const distance = await getOnuDistance(options, onu.slot, onu.pon, onu.onuId, ignoreValid)
+                    onu.distance = distance
+                    
+                    const upLinkInterface = await getOnuUplinkInterface(options, onu.slot, onu.pon, onu.onuId, toIgnore.includes('getOnuUplinkInterface'), ignoreValid)
+                    if (upLinkInterface)
+                        onu.upLinkInterface = upLinkInterface
+                    
+                    const lastOffTime = await getOnuLastOffTime(options, onu.slot, onu.pon, onu.onuId, ignoreValid)
+                    onu.lastOffTime = lastOffTime
+                    return onu
                 }
-            } else
-                return resolve(false)
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getOnuDistance(options, slot, pon, onuId, ignoreValid) {
-    return new Promise((resolve, reject) => {
-        try {
-            setTimeout(t => {
-                gFunc.isValid(options, slot, pon, onuId, ignoreValid).then(isValid => {
-                    if (isValid && slot && pon && onuId) {
-                        var bgmp = snmp_fh.getDistance
-                        bgmp = bgmp.split(' ')
-                        bgmp[156] = slot.toHex(2)
-                        bgmp[158] = pon.toHex(2)
-                        bgmp[160] = onuId.toHex(2)  // ONU NUMBER / ONU Authorized No.  
-                        bgmp = bgmp.join(' ')
-
-snmp_fh.sendSnmp(OID.getOnuDistance, bgmp, options, true).then(ret => {
-                            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                            for (var i = 0; i < ret.length; i += 2)
-                                hex += ret.substring(i, i + 2) + ' '
-                            hex = hex.trim()
-                            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 03 01 01 07 01 ')[1]
-                            value = value.split(' ')
-                            if (value[1] == '81')
-                                value = value.splice(3)
-                            else
-                                value = value.splice(4)
-
-                            var obj = {
-                                _onuIndex: convertToOnuIndex(slot, pon, onuId),
-                                value: (hexToInt(value.slice(-2).join('')) / 1000).toFixed(3),
-                                unit: 'km'
-                            }
-                            snmp_fh.sendSnmp(OID.confirmGetOnuDistance, bgmp, options, true).then(retConfirm => { // Confirmação    
-                                return resolve(obj)
-                            })
-                        })
-                    } else return resolve(false)
-                }, error => {
-                    return resolve(false)
-                })
-            }, queueTime)
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getOnuLastOffTime(options, slot, pon, onuId, ignoreValid) {
-    return new Promise((resolve, reject) => {
-        try {
-            setTimeout(t => {
-                gFunc.isValid(options, slot, pon, onuId, ignoreValid).then(isValid => {
-                    if (isValid && slot && pon && onuId) {
-                        var bgmp = snmp_fh.lastOffTime
-                        bgmp = bgmp.split(' ')
-                        bgmp[159] = '01'
-                        bgmp[161] = slot.toHex(2)
-                        bgmp[163] = pon.toHex(2)
-                        bgmp[165] = onuId.toHex(2)
-                        bgmp = bgmp.join(' ')
-                        snmp_fh.sendSnmp(OID.getOnuLastOffTime, bgmp, options, true).then(ret => {
-                            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                            for (var i = 0; i < ret.length; i += 2)
-                                hex += ret.substring(i, i + 2) + ' '
-                            hex = hex.trim()
-
-                            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 03 01 01 1c 01 ')[1]
-                            value = value.split(' ')
-                            if (value[1] == '81')
-                                value = value.splice(3)
-                            else
-                                value = value.splice(4)
-
-                            var year = hexToInt(value.slice(184, 186).join('')).toString().padStart(4, '0')
-                            var mouth = hexToInt(value.slice(186, 187).join('')).toString().padStart(2, '0')
-                            var day = hexToInt(value.slice(187, 188).join('')).toString().padStart(2, '0')
-                            var hours = hexToInt(value.slice(188, 189).join('')).toString().padStart(2, '0')
-                            var minutes = hexToInt(value.slice(189, 190).join('')).toString().padStart(2, '0')
-                            var seconds = hexToInt(value.slice(190, 191).join('')).toString().padStart(2, '0')
-                            var obj = {
-                                _onuIndex: convertToOnuIndex(slot, pon, onuId),
-                                date: `${year}-${mouth}-${day}`,
-                                time: `${hours}:${minutes}:${seconds}`
-                            }
-                            snmp_fh.sendSnmp(OID.confirmGetOnuLastOffTime, bgmp, options, true).then(retConfirm => {
-                                return resolve(obj)
-                            })
-                        })
-                    } else return resolve(false)
-                }, error => {
-                    return resolve(false)
-                })
-            }, queueTime)
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getOnuOpticalPower(options, slot, pon, onuId, ignore, ignoreValid) {
-    return new Promise((resolve, reject) => {
-        try {
-            if (ignore)
-                return resolve(null)
-            setTimeout(t => {
-                gFunc.isValid(options, slot, pon, onuId, ignoreValid).then(isValid => {
-                    if (isValid && slot && pon && onuId) {
-                        var bgmp = snmp_fh.signal
-                        bgmp = bgmp.split(' ')
-                        bgmp[157] = slot.toHex(2)
-                        bgmp[159] = pon.toHex(2)
-                        bgmp[161] = onuId.toHex(2)  // ONU NUMBER / ONU Authorized No.  
-                        bgmp = bgmp.join(' ')
-                        snmp_fh.sendSnmp(OID.getOnuOpticalPower, bgmp, options, true).then(ret => {
-                            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                            for (var i = 0; i < ret.length; i += 2)
-                                hex += ret.substring(i, i + 2) + ' '
-                            hex = hex.trim()
-
-                            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 03 01 01 06 01 ')[1]
-                            value = value.split(' ')
-                            if (value[1] == '81')
-                                value = value.splice(3)
-                            else
-                                value = value.splice(4)
-
-                            var obj = {
-                                _onuIndex: convertToOnuIndex(slot, pon, onuId),
-                                temperature: {
-                                    value: (hexToInt(value.slice(174, 176).join('')) / 100).toFixed(2),
-                                    //status: '--',   //value[177] == '02' ? 'Normal' : 'Warning',
-                                    unit: '°C'
-                                },
-                                voltage: {
-                                    value: (hexToInt(value.slice(180, 182).join('')) / 100).toFixed(2),
-                                    //status: '--',   //value[183] == '02' ? 'Normal' : 'Warning',
-                                    unit: 'V'
-                                },
-                                currTxBias: {
-                                    value: (hexToInt(value.slice(186, 188).join('')) / 100).toFixed(2),
-                                    //status: '--',   //value[189] == '02' ? 'Normal' : 'Warning',
-                                    unit: 'mA'
-                                },
-                                txPower: {
-                                    value: (hexToInt(value.slice(192, 194).join('')) / 100).toFixed(2),
-                                    //status: '--',   //value[195] == '00' ? 'High' : value[195] == '01' ? 'Low' : 'Normal',
-                                    unit: 'dBm'
-                                },
-                                rxPower: {
-                                    value: (hexToInt(value.slice(198, 200).join('')) / 100).toFixed(2),
-                                    //status: '--',   //value[201] == '00' ? 'High' : value[201] == '01' ? 'Low' : 'Normal',
-                                    unit: 'dBm'
-                                }
-                            }
-                            snmp_fh.sendSnmp(OID.confirmGetOnuOpticalPower, bgmp, options, true).then(retConfirm => {
-                                return resolve(obj)
-                            })
-                        })
-                    } else return resolve(false)
-                }, error => {
-                    return resolve(false)
-                })
-            }, queueTime)
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getOnuByPonWithOffset(options, slot, pon, offset) {
-    return new Promise((resolve, reject) => {
-        setTimeout(t => {
-            try {
-                gFunc.isValid(options, slot, pon).then(isValid => {
-                    if (isValid) {
-                        var queue = new Queue(1, 10000)
-                        var aOnuOID = []
-                        var aResp = []
-                        var list = []
-                        for (var onuId = 1 + (offset * 16); onuId <= 16 + (offset * 16); ++onuId)
-                            aOnuOID.push(OID.getOnuMacAddress + '.' + convertToOnuIndex(slot, pon, onuId).toString())
-                        snmp_fh.get(options, aOnuOID).then(ret => {
-                            ret.forEach(e => {
-                                if (e.value && e.value.length > 0)
-                                    aResp.push({ _onuIndex: e.oid.split('.')[13], ...parseOnuIndex(parseInt(e.oid.split('.')[13])), macAddress: e.value.toString() })
-                            })
-                            if (aResp.length > 0)
-                                aResp.forEach((onu, idx) => {
-                                    queue.add(f => getOnu(options, onu.slot, onu.pon, onu.onuId, ['getOnuUplinkInterface']).then(o => {
-                                        list.push({ ...onu, ...o })
-                                        if (queue.queue.length == 0) {
-                                            return resolve(list)
-                                        }
-
-                                    }))
-                                })
-                            else
-                                return resolve([])
-                        })
-
-                    } else return resolve(false)
-                }, error => {
-                    return resolve(false)
-                })
-            } catch (err) {
-                return reject(err)
             }
-        }, 30)
-    })
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
-function getOnuListByPon_OLD(options, slot, pon) {
-    return new Promise((resolve, reject) => {
-        var list = []
-        try {
-            var queue = new Queue(1, 10)
-            for (var offset = 0; offset < 8; ++offset) {
-                const _offset = offset
-                queue.add(f => getOnuByPonWithOffset(options, slot, pon, _offset)).then(onus => {
-                    list.push(...onus)
-                    if (queue.queue.length == 0)
-                        return resolve(list)
-                })
+async function getBasicOnuByIndex(options, onuIndex, toIgnore) {
+    if (!toIgnore)
+        toIgnore = []
+    try {
+        var _onu = parseOnuIndex(onuIndex)
+        var oids = [OID.getOnuType, OID.getOnuMacAddress, OID.getOnuStatus]
+        oids = oids.map(oid => oid + '.' + onuIndex)
+        const data = await snmp_fh.get(options, oids)
+        const oltData = await olt.getOltModel(options)
+        var oltModel = oltData.includes('5116') ? '5116' : oltData.includes('5516') ? '5516' : null
+        var onu = { ..._onu }
+        // Formatando/convertendo os dados
+        for (let idx = 0; idx < data.length; idx++) {
+            const o = data[idx]
+            if (o.oid.split('.')[12] == 5)                          // OID.getOnuType
+                onu.onuType = table.ONUType[o.value] || 'not identified'
+            else if (o.oid.split('.')[12] == 10 && o.value)         // OID.getOnuMacAddress
+                onu.macAddress = o.value.toString()
+            else if (o.oid.split('.')[12] == 11) {                  // OID.getOnuStatus
+                onu.onuStatusValue = o.value
+                onu.onuStatus = oltModel == '5116' ? table.onuStatus_5116[o.value] : oltModel == '5516' ? table.onuStatus_5516[o.value] : 'not identified'
+                // TODO: verificar se é NGPON e utilizar: table.onuStatus_5516_NGPON
             }
-        } catch (err) {
-            return reject(err)
+            if (idx == data.length - 1) {
+                if (!onu.slot)
+                    return onu
+                if (toIgnore.includes('getOnuDistance') && toIgnore.includes('getOnuLastOffTime'))
+                    return onu
+                else {
+                    const distance = await getOnuDistance(options, onu.slot, onu.pon, onu.onuId, true)
+                    onu.distance = distance
+                    const lastOffTime = await getOnuLastOffTime(options, onu.slot, onu.pon, onu.onuId, true)
+                    onu.lastOffTime = lastOffTime
+                    return onu
+                }
+            }
         }
-    })
+    } catch (err) {
+        throw err
+    }
 }
 
-function getOnuListByPon(options, slot, pon) {
-    return new Promise((resolve, reject) => {
-        var list = []
-        try {
-            var queue = new Queue(1, 1000)
-            getOnuIdListByPon(options, slot, pon).then(portList => {
-                portList.forEach(onu => {
-                    queue.add(f => getOnu(options, onu.slot, onu.pon, onu.onuId, ['getOnuUplinkInterface']).then(o => {
-                        list.push({ ...onu, ...o })
-                        if (queue.queue.length == 0) {
-                            return resolve(list)
-                        }
+async function getOnuBySerial(options, serial) {
+    try {
+        // TODO
+        return false
+    } catch (err) {
+        throw err
+    }
+}
 
-                    }))
-                })
+async function getBasicOnuInfo(options, macAddress, slot, pon) {
+    try {
+        if (macAddress && (!slot && !pon) || (macAddress && slot && pon)) {
+            if (slot && pon) {    // Busca otimizada
+                const isValid = await gFunc.isValid(options, slot, pon).catch(() => false)
+                if (isValid) {
+                    var aOnuOID = []
+                    for (var onuId = 1; onuId <= 128; ++onuId)
+                        aOnuOID.push(OID.getOnuMacAddress + '.' + convertToOnuIndex(slot, pon, onuId).toString())
+                    const ret = await snmp_fh.get(options, aOnuOID)
+                    var idx = ret.findIndex(e => (e.value && e.value.toString().toLowerCase()) == macAddress.toLowerCase())
+                    if (idx > -1) {
+                        var onuIndex = parseInt(ret[idx].oid.split(OID.getOnuMacAddress + '.')[1])
+                        return { _onuIndex: onuIndex, ...parseOnuIndex(onuIndex), macAddress: ret[idx].value.toString() }
+                    } else
+                        return false
+                } else return false
+            } else {
+                const ret = await snmp_fh.subtree(options, OID.getOnuMacAddress)
+                var idx = ret.findIndex(e => (e.value && e.value.toString().toLowerCase()) == macAddress.toLowerCase())
+                if (idx > -1) {
+                    var onuIndex = parseInt(ret[idx].oid.split(OID.getOnuMacAddress + '.')[1])
+                    return { _onuIndex: onuIndex, ...parseOnuIndex(onuIndex), macAddress: ret[idx].value.toString() }
+                } else
+                    return false
+            }
+        } else
+            return false
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getOnuDistance(options, slot, pon, onuId, ignoreValid) {
+    try {
+        await new Promise(resolve => setTimeout(resolve, queueTime))
+        const isValid = await gFunc.isValid(options, slot, pon, onuId, ignoreValid).catch(() => false)
+        if (isValid && slot && pon && onuId) {
+            var bgmp = snmp_fh.getDistance
+            bgmp = bgmp.split(' ')
+            bgmp[156] = slot.toHex(2)
+            bgmp[158] = pon.toHex(2)
+            bgmp[160] = onuId.toHex(2)  // ONU NUMBER / ONU Authorized No.  
+            bgmp = bgmp.join(' ')
+
+            const ret = await snmp_fh.sendSnmp(OID.getOnuDistance, bgmp, options, true)
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 03 01 01 07 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
+
+            var obj = {
+                _onuIndex: convertToOnuIndex(slot, pon, onuId),
+                value: (hexToInt(value.slice(-2).join('')) / 1000).toFixed(3),
+                unit: 'km'
+            }
+            await snmp_fh.sendSnmp(OID.confirmGetOnuDistance, bgmp, options, true)
+            return obj
+        } else return false
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getOnuLastOffTime(options, slot, pon, onuId, ignoreValid) {
+    try {
+        await new Promise(resolve => setTimeout(resolve, queueTime))
+        const isValid = await gFunc.isValid(options, slot, pon, onuId, ignoreValid).catch(() => false)
+        if (isValid && slot && pon && onuId) {
+            var bgmp = snmp_fh.lastOffTime
+            bgmp = bgmp.split(' ')
+            bgmp[159] = '01'
+            bgmp[161] = slot.toHex(2)
+            bgmp[163] = pon.toHex(2)
+            bgmp[165] = onuId.toHex(2)
+            bgmp = bgmp.join(' ')
+            const ret = await snmp_fh.sendSnmp(OID.getOnuLastOffTime, bgmp, options, true)
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
+
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 03 01 01 1c 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
+
+            var year = hexToInt(value.slice(184, 186).join('')).toString().padStart(4, '0')
+            var mouth = hexToInt(value.slice(186, 187).join('')).toString().padStart(2, '0')
+            var day = hexToInt(value.slice(187, 188).join('')).toString().padStart(2, '0')
+            var hours = hexToInt(value.slice(188, 189).join('')).toString().padStart(2, '0')
+            var minutes = hexToInt(value.slice(189, 190).join('')).toString().padStart(2, '0')
+            var seconds = hexToInt(value.slice(190, 191).join('')).toString().padStart(2, '0')
+            var obj = {
+                _onuIndex: convertToOnuIndex(slot, pon, onuId),
+                date: `${year}-${mouth}-${day}`,
+                time: `${hours}:${minutes}:${seconds}`
+            }
+            await snmp_fh.sendSnmp(OID.confirmGetOnuLastOffTime, bgmp, options, true)
+            return obj
+        } else return false
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getOnuOpticalPower(options, slot, pon, onuId, ignore, ignoreValid) {
+    try {
+        if (ignore)
+            return null
+        await new Promise(resolve => setTimeout(resolve, queueTime))
+        const isValid = await gFunc.isValid(options, slot, pon, onuId, ignoreValid).catch(() => false)
+        if (isValid && slot && pon && onuId) {
+            var bgmp = snmp_fh.signal
+            bgmp = bgmp.split(' ')
+            bgmp[157] = slot.toHex(2)
+            bgmp[159] = pon.toHex(2)
+            bgmp[161] = onuId.toHex(2)  // ONU NUMBER / ONU Authorized No.  
+            bgmp = bgmp.join(' ')
+            const ret = await snmp_fh.sendSnmp(OID.getOnuOpticalPower, bgmp, options, true)
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
+
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 03 01 01 06 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
+
+            var obj = {
+                _onuIndex: convertToOnuIndex(slot, pon, onuId),
+                temperature: {
+                    value: (hexToInt(value.slice(174, 176).join('')) / 100).toFixed(2),
+                    //status: '--',   //value[177] == '02' ? 'Normal' : 'Warning',
+                    unit: '°C'
+                },
+                voltage: {
+                    value: (hexToInt(value.slice(180, 182).join('')) / 100).toFixed(2),
+                    //status: '--',   //value[183] == '02' ? 'Normal' : 'Warning',
+                    unit: 'V'
+                },
+                currTxBias: {
+                    value: (hexToInt(value.slice(186, 188).join('')) / 100).toFixed(2),
+                    //status: '--',   //value[189] == '02' ? 'Normal' : 'Warning',
+                    unit: 'mA'
+                },
+                txPower: {
+                    value: (hexToInt(value.slice(192, 194).join('')) / 100).toFixed(2),
+                    //status: '--',   //value[195] == '00' ? 'High' : value[195] == '01' ? 'Low' : 'Normal',
+                    unit: 'dBm'
+                },
+                rxPower: {
+                    value: (hexToInt(value.slice(198, 200).join('')) / 100).toFixed(2),
+                    //status: '--',   //value[201] == '00' ? 'High' : value[201] == '01' ? 'Low' : 'Normal',
+                    unit: 'dBm'
+                }
+            }
+            await snmp_fh.sendSnmp(OID.confirmGetOnuOpticalPower, bgmp, options, true)
+            return obj
+        } else return false
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getOnuByPonWithOffset(options, slot, pon, offset) {
+    try {
+        await new Promise(resolve => setTimeout(resolve, 30))
+        const isValid = await gFunc.isValid(options, slot, pon).catch(() => false)
+        if (isValid) {
+            var queue = new Queue(1, 10000)
+            var aOnuOID = []
+            var aResp = []
+            
+            for (var onuId = 1 + (offset * 16); onuId <= 16 + (offset * 16); ++onuId)
+                aOnuOID.push(OID.getOnuMacAddress + '.' + convertToOnuIndex(slot, pon, onuId).toString())
+            
+            const ret = await snmp_fh.get(options, aOnuOID)
+            ret.forEach(e => {
+                if (e.value && e.value.length > 0)
+                    aResp.push({ _onuIndex: e.oid.split('.')[13], ...parseOnuIndex(parseInt(e.oid.split('.')[13])), macAddress: e.value.toString() })
             })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+
+            if (aResp.length > 0) {
+                 const promises = aResp.map(onu => 
+                    queue.add(async () => {
+                         const o = await getOnu(options, onu.slot, onu.pon, onu.onuId, ['getOnuUplinkInterface'])
+                         return { ...onu, ...o }
+                    })
+                 )
+                 return await Promise.all(promises)
+            } else {
+                return []
+            }
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
-function getBasicOnuListByPon(options, slot, pon) {
-    return new Promise((resolve, reject) => {
+async function getOnuListByPon_OLD(options, slot, pon) {
+    try {
         var list = []
-        try {
-            var queue = new Queue(1, 1000)
-            getOnuIdListByPon(options, slot, pon).then(portList => {
-                if (portList === false)
-                    return resolve(false)
-                cont = portList.length
-                portList.forEach(onu => {
-                    queue.add(f => getOnu(options, onu.slot, onu.pon, onu.onuId, ['getOnuUplinkInterface', 'getOnuDistance', 'getOnuLastOffTime'], true).then(o => {
-                        list.push({ ...onu, ...o })
-                        if (queue.queue.length == 0)
-                            return resolve(list)
-                    }))
-                })
-            }, err => { return resolve(false) })
-        } catch (err) {
-            return reject(err)
+        var queue = new Queue(1, 10)
+        var promises = []
+        for (var offset = 0; offset < 8; ++offset) {
+            const _offset = offset
+            promises.push(queue.add(async () => {
+                const onus = await getOnuByPonWithOffset(options, slot, pon, _offset)
+                list.push(...onus)
+            }))
         }
-    })
+        await Promise.all(promises)
+        return list
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getOnuListByPon(options, slot, pon) {
+    try {
+        var queue = new Queue(1, 1000)
+        const portList = await getOnuIdListByPon(options, slot, pon)
+        if (portList) {
+            const promises = portList.map(onu => 
+                queue.add(async () => {
+                    const o = await getOnu(options, onu.slot, onu.pon, onu.onuId, ['getOnuUplinkInterface'])
+                    return { ...onu, ...o }
+                })
+            )
+            return await Promise.all(promises)
+        }
+        return []
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getBasicOnuListByPon(options, slot, pon) {
+    try {
+        var queue = new Queue(1, 1000)
+        const portList = await getOnuIdListByPon(options, slot, pon).catch(() => false)
+        if (portList === false)
+            return false
+        
+        const promises = portList.map(onu => 
+            queue.add(async () => {
+                const o = await getOnu(options, onu.slot, onu.pon, onu.onuId, ['getOnuUplinkInterface', 'getOnuDistance', 'getOnuLastOffTime'], true)
+                return { ...onu, ...o }
+            })
+        )
+        return await Promise.all(promises)
+    } catch (err) {
+        throw err
+    }
 }
 
 // Versão customizada para a Valenet
-function getBasicOnuListByPonValenet(options, slot, pon) {
-    return new Promise((resolve, reject) => {
-        var list = []
-        try {
-            var queue = new Queue(1, 1000)
-            getOnuIdListByPon(options, slot, pon).then(portList => {
-                if (portList === false)
-                    return resolve(portList)
-                cont = portList.length
-                portList.forEach(onu => {
-                    queue.add(f => getOnu(options, onu.slot, onu.pon, onu.onuId, ['getOnuUplinkInterface'], true).then(o => {
-                        list.push({ ...onu, ...o })
-                        if (queue.queue.length == 0)
-                            return resolve(list)
-                    }))
-                })
-            }, err => { return resolve(false) })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+async function getBasicOnuListByPonValenet(options, slot, pon) {
+    try {
+        var queue = new Queue(1, 1000)
+        const portList = await getOnuIdListByPon(options, slot, pon).catch(() => false)
+        if (portList === false)
+            return portList
+        
+        const promises = portList.map(onu => 
+            queue.add(async () => {
+                const o = await getOnu(options, onu.slot, onu.pon, onu.onuId, ['getOnuUplinkInterface'], true)
+                return { ...onu, ...o }
+            })
+        )
+        return await Promise.all(promises)
+    } catch (err) {
+        throw err
+    }
 }
 
-function getOnuIdListByPon(options, slot, pon) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon).then(isValid => {
-                if (isValid && slot && pon) {
-                    var bgmp = snmp_fh.getOnuIdListByPon
-                    bgmp = bgmp.split(' ')
-                    bgmp[163] = slot.toHex(2)
-                    bgmp = bgmp.join(' ')
-                    snmp_fh.sendSnmp(OID.getOnuIdListByPon, bgmp, options, true).then(ret => {
-                        snmp_fh.sendSnmp(OID.confirmGetOnuIdListByPon, bgmp, options, true).then(confirm => {
-                            bgmp = bgmp.split(' ')
-                            bgmp[164] = pon.toHex(4).slice(0, 2)
-                            bgmp[165] = pon.toHex(4).slice(2, 4)
-                            bgmp = bgmp.join(' ')
-                            snmp_fh.sendSnmp(OID.getOnuIdListByPon, bgmp, options, true).then(portList => {
-                                snmp_fh.sendSnmp(OID.confirmGetOnuIdListByPon, bgmp, options, true).then(confirm2 => {
-                                    var respPortList = []
-                                    var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                                    for (var i = 0; i < portList.length; i += 2)
-                                        hex += portList.substring(i, i + 2) + ' '
-                                    hex = hex.trim()
-                                    var value = hex.split('2b 06 01 04 01 ad 73 5b 01 01 01 01 01 17 01 ')[1]
-                                    value = value.split(' ')
-                                    if (value[1] == '81')
-                                        value = value.splice(3)
-                                    else
-                                        value = value.splice(4)
+async function getOnuIdListByPon(options, slot, pon) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon).catch(() => false)
+        if (isValid && slot && pon) {
+            var bgmp = snmp_fh.getOnuIdListByPon
+            bgmp = bgmp.split(' ')
+            bgmp[163] = slot.toHex(2)
+            bgmp = bgmp.join(' ')
+            await snmp_fh.sendSnmp(OID.getOnuIdListByPon, bgmp, options, true)
+            await snmp_fh.sendSnmp(OID.confirmGetOnuIdListByPon, bgmp, options, true)
+            
+            bgmp = bgmp.split(' ')
+            bgmp[164] = pon.toHex(4).slice(0, 2)
+            bgmp[165] = pon.toHex(4).slice(2, 4)
+            bgmp = bgmp.join(' ')
+            
+            const portList = await snmp_fh.sendSnmp(OID.getOnuIdListByPon, bgmp, options, true)
+            await snmp_fh.sendSnmp(OID.confirmGetOnuIdListByPon, bgmp, options, true)
 
-                                    var numPorts = parseInt((value[162] + value[163]), 16)
-                                    if (numPorts > 0) {
-                                        value = value.slice(164)
-                                        for (var i = 0; i < numPorts; ++i) {
-                                            var onuId = parseInt((value[6] + value[7]), 16)
-                                            respPortList.push({ _onuIndex: convertToOnuIndex(slot, pon, onuId), slot, pon, onuId })
-                                            value = value.slice(44)
-                                        }
-                                        return resolve(respPortList)
-                                    } else
-                                        return resolve(false)
-                                })
-                            })
-                        })
-                    })
-                } else return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+            var respPortList = []
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < portList.length; i += 2)
+                hex += portList.substring(i, i + 2) + ' '
+            hex = hex.trim()
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 01 01 01 01 17 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
+
+            var numPorts = parseInt((value[162] + value[163]), 16)
+            if (numPorts > 0) {
+                value = value.slice(164)
+                for (var i = 0; i < numPorts; ++i) {
+                    var onuId = parseInt((value[6] + value[7]), 16)
+                    respPortList.push({ _onuIndex: convertToOnuIndex(slot, pon, onuId), slot, pon, onuId })
+                    value = value.slice(44)
+                }
+                return respPortList
+            } else
+                return false
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
 // failed
-function getOnuListBySlot(options, slot) {
-    return new Promise((resolve, reject) => {
-        gFunc.isValid(options, slot).then(isValid => {
-            if (isValid && slot) {
-                var oidValue = snmp_fh.getOnuListBySlot
-                oidValue = oidValue.split(' ')
-                oidValue[161] = slot.toHex(2)
-                oidValue = oidValue.join(' ')
+async function getOnuListBySlot(options, slot) {
+    try {
+        const isValid = await gFunc.isValid(options, slot).catch(() => false)
+        if (isValid && slot) {
+            var oidValue = snmp_fh.getOnuListBySlot
+            oidValue = oidValue.split(' ')
+            oidValue[161] = slot.toHex(2)
+            oidValue = oidValue.join(' ')
 
-                snmp_fh.sendSnmp(OID.getOnuListBySlot, oidValue, options, true).then(ret => {
-                    var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                    for (var i = 0; i < ret.length; i += 2)
-                        hex += ret.substring(i, i + 2) + ' '
-                    hex = hex.trim()
+            const ret = await snmp_fh.sendSnmp(OID.getOnuListBySlot, oidValue, options, true)
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
 
-                    var value = hex.split('2b 06 01 04 01 ad 73 5b 01 0d 03 01 01 06 01 ')[1]
-                    value = value.split(' ')
-                    if (value[1] == '81')
-                        value = value.splice(3)
-                    else
-                        value = value.splice(4)
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 0d 03 01 01 06 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
 
-                    amount = value[163]
-                    var aOnus = []
-                    for (var idx = 0; idx < amount; ++idx) {
-                        var onuHex = value.slice(164 + (idx * 230), 164 + (idx * 230) + 230)
-                        var onu = {}
-                        onu.slot = parseInt(onuHex[1], 16)
-                        onu.pon = parseInt(onuHex[3], 16)
-                        onu.onuId = parseInt(onuHex[5], 16)
-                        onu.serial = ''
-                        for (var s = 0; s < 12; s++)
-                            onu.serial += onuHex[20 + s] != '00' ? String.fromCharCode(parseInt(onuHex[20 + s], 16)) : ''
+            amount = value[163]
+            var aOnus = []
+            for (var idx = 0; idx < amount; ++idx) {
+                var onuHex = value.slice(164 + (idx * 230), 164 + (idx * 230) + 230)
+                var onu = {}
+                onu.slot = parseInt(onuHex[1], 16)
+                onu.pon = parseInt(onuHex[3], 16)
+                onu.onuId = parseInt(onuHex[5], 16)
+                onu.serial = ''
+                for (var s = 0; s < 12; s++)
+                    onu.serial += onuHex[20 + s] != '00' ? String.fromCharCode(parseInt(onuHex[20 + s], 16)) : ''
 
-                        onu.onuTypeModel = ''
-                        for (var m = 0; m < 12; m++)
-                            onu.onuTypeModel += String.fromCharCode(parseInt(onuHex[36 + m], 16))
-                        onu.onuTypeModel = onu.onuTypeModel.trim()
-                        aOnus.push(onu)
-                    }
-                    snmp_fh.sendSnmp(OID.confirmGetOnusBySlot, oidValue, options, true).then(ret => {
-                        return resolve(aOnus)
-                    })
-                })
-            } else return resolve(false)
-        }, error => {
-            return resolve(false)
+                onu.onuTypeModel = ''
+                for (var m = 0; m < 12; m++)
+                    onu.onuTypeModel += String.fromCharCode(parseInt(onuHex[36 + m], 16))
+                onu.onuTypeModel = onu.onuTypeModel.trim()
+                aOnus.push(onu)
+            }
+            await snmp_fh.sendSnmp(OID.confirmGetOnusBySlot, oidValue, options, true)
+            return aOnus
+        } else return false
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getOnuIdList(options) {
+    try {
+        const serialList = await snmp_fh.subtree(options, OID.getOnuIdList)
+        var list = []
+        serialList.forEach(e => {
+            list.push({ _onuIndex: parseInt(e.oid.split(OID.getOnuIdList + '.')[1]), onuId: e.value })
         })
-    })
+        return list
+    } catch (err) {
+        throw err
+    }
 }
 
-function getOnuIdList(options) {
-    return new Promise((resolve, reject) => {
+async function getOnuIndexList(options) {
+    try {
+        var aONUs = []
         try {
-            snmp_fh.subtree(options, OID.getOnuIdList).then(serialList => {
-                var list = []
-                serialList.forEach(e => {
-                    list.push({ _onuIndex: parseInt(e.oid.split(OID.getOnuIdList + '.')[1]), onuId: e.value })
-                })
-                return resolve(list)
+            const varbinds = await snmp_fh.subtree(options, OID.getOnuIndexList)
+            varbinds.forEach(onu => {
+                aONUs.push(onu.value)
             })
-        } catch (err) {
-            return reject(err)
+            return aONUs
+        } catch (error) {
+            console.error('Error: Unable to connect to OLT')
+            return false
         }
-    })
+    } catch (err) {
+        throw err
+    }
 }
 
-function getOnuIndexList(options) {
-    return new Promise((resolve, reject) => {
-        try {
-            var aONUs = []
-            snmp_fh.subtree(options, OID.getOnuIndexList).then(varbinds => {
-                varbinds.forEach(onu => {
-                    aONUs.push(onu.value)
-                })
-                return resolve(aONUs)
-            }, error => {
-                console.error('Error: Unable to connect to OLT')
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
+async function getOnuRxPowerListByPon(options, slot, pon, ignoreValid) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon, ignoreValid).catch(() => false)
+        if (isValid && slot && pon) {
+            var bgmp = snmp_fh.getOnuRxPowerListByPon
+            bgmp = bgmp.split(' ')
+            bgmp[157] = slot.toHex(2)
+            bgmp[159] = pon.toHex(2)
+            bgmp = bgmp.join(' ')
+            const ret = await snmp_fh.sendSnmp(OID.getOnuRxPowerListByPon, bgmp, options, true)
+            await snmp_fh.sendSnmp(OID.confirmGetOnuRxPowerListByPon, bgmp, options, true)
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
 
-function getOnuRxPowerListByPon(options, slot, pon, ignoreValid) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon, ignoreValid).then(isValid => {
-                if (isValid && slot && pon) {
-                    var bgmp = snmp_fh.getOnuRxPowerListByPon
-                    bgmp = bgmp.split(' ')
-                    bgmp[157] = slot.toHex(2)
-                    bgmp[159] = pon.toHex(2)
-                    bgmp = bgmp.join(' ')
-                    snmp_fh.sendSnmp(OID.getOnuRxPowerListByPon, bgmp, options, true).then(ret => {
-                        snmp_fh.sendSnmp(OID.confirmGetOnuRxPowerListByPon, bgmp, options, true).then(confirm => {
-                            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                            for (var i = 0; i < ret.length; i += 2)
-                                hex += ret.substring(i, i + 2) + ' '
-                            hex = hex.trim()
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 15 03 01 01 04 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
 
-                            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 15 03 01 01 04 01 ')[1]
-                            value = value.split(' ')
-                            if (value[1] == '81')
-                                value = value.splice(3)
-                            else
-                                value = value.splice(4)
+            var numOnus = parseInt((value[230] + value[231]), 16)
+            value = value.slice(232)
+            var list = []
+            for (var i = 0; i < numOnus; ++i) {
+                var obj = {}
 
-                            var numOnus = parseInt((value[230] + value[231]), 16)
-                            value = value.slice(232)
-                            var list = []
-                            for (var i = 0; i < numOnus; ++i) {
-                                var obj = {}
+                obj.onuId = parseInt((value[0] + value[1]), 16)
+                obj._onuIndex = convertToOnuIndex(slot, pon, obj.onuId)
+                obj.slot = slot
+                obj.pon = pon
+                obj.rxPower = (gFunc.hexToDec(value[4] + value[5] + value[6] + value[7]) / 100).toFixed(2).toString()
+                obj.unit = 'dBm'
+                list.push(obj)
+                value = value.slice(8)
+            }
 
-                                obj.onuId = parseInt((value[0] + value[1]), 16)
-                                obj._onuIndex = convertToOnuIndex(slot, pon, obj.onuId)
-                                obj.slot = slot
-                                obj.pon = pon
-                                obj.rxPower = (gFunc.hexToDec(value[4] + value[5] + value[6] + value[7]) / 100).toFixed(2).toString()
-                                obj.unit = 'dBm'
-                                list.push(obj)
-                                value = value.slice(8)
-                            }
-
-                            getOnuIdListByPon(options, slot, pon).then(onuList => {
-                                onuList.map(e => {
-                                    var idx = list.findIndex(o => o.onuId == e.onuId)
-                                    if (idx > -1) {
-                                        e.rxPower = list[idx].rxPower
-                                    } else {
-                                        e.rxPower = "--"
-                                    }
-                                    e.unit = 'dBm'
-                                })
-                                return resolve(onuList)
-                            })
-                        })
-                    })
-                } else return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getOnuOpticalPowerList(options) {
-    return new Promise((resolve, reject) => {
-        try {
-            aOpticalPower = []
-            var queue = new Queue(1, 10000)
-            getOnuIndexList(options).then(aONUs => {
-                if (aONUs === false)
-                    return resolve(false)
-                aONUs.forEach(onuIndex => {
-                    var onu = parseOnuIndex(onuIndex)
-                    queue.add(f => getOnuOpticalPower(options, onu.slot, onu.pon, onu.onuId).then(onuOpticalPower => {
-                        aOpticalPower.push({ _onuIndex: onuIndex, ...onu, opticalPower: onuOpticalPower })
-                        if (queue.queue.length == 0)
-                            return resolve(aOpticalPower)
-                    }))
-                })
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getOnuType(options, slot, pon, onuId) {
-    return new Promise((resolve, reject) => {
-        try {
-            var onuIndex = convertToOnuIndex(slot, pon, onuId)
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && onuIndex) {
-                    snmp_fh.get(options, [OID.getOnuType + '.' + onuIndex]).then(data => {
-                        if (data[0].oid.split('.')[12] == 5 && data[0].type == 2)
-                            return resolve(table.ONUType[data[0].value])
-                        return resolve(null)
-                    })
+            const onuList = await getOnuIdListByPon(options, slot, pon)
+            onuList.map(e => {
+                var idx = list.findIndex(o => o.onuId == e.onuId)
+                if (idx > -1) {
+                    e.rxPower = list[idx].rxPower
                 } else {
-                    if (options.enableWarnings)
-                        console.error('getOnuType(): Invalid input parameters.')
-                    return resolve(false)
+                    e.rxPower = "--"
                 }
-            }, error => {
-                return resolve(false)
+                e.unit = 'dBm'
             })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+            return onuList
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
-function getOnuUplinkInterface(options, slot, pon, onuId, ignore, ignoreValid) {
-    return new Promise((resolve, reject) => {
-        try {
-            if (ignore)
-                return resolve(null)
-            gFunc.isValid(options, slot, pon, onuId, ignoreValid).then(isValid => {
-                if (isValid && slot && pon && onuId) {
-                    var oids = [OID.onuGetUplinkInterfacePortName, OID.onuGetUplinkInterfacePortDescription, OID.onuGetUplinkInterfacePortType, OID.onuGetUplinkInterfacePortStatus, OID.onuGetUplinkInterfaceDownlinkRate, OID.onuGetUplinkInterfaceUplinkRate]
-                    var onuIndex = convertToOnuIndex(slot, pon, onuId)
-                    oids = oids.map(oid => oid + '.' + onuIndex)
-
-                    snmp_fh.get(options, oids).then(data => {
-                        var obj = { downlinkRateUnit: 'Mbit/s', uplinkRateUnit: 'Mbit/s' }
-                        data.forEach((o, idx) => {
-                            if (o.oid.split('.')[13] == 1)
-                                obj.portType = o.value
-                            else if (o.oid.split('.')[13] == 2)
-                                obj.portName = o.value.toString()
-                            else if (o.oid.split('.')[13] == 3)
-                                obj.portDescription = o.value.toString()
-                            else if (o.oid.split('.')[13] == 4) {
-                                obj.portStatus = o.value == 1 ? 'enable' : o.value == 0 ? 'disable' : 'undefined'
-                                obj.portStatusValue = o.value
-                            } else if (o.oid.split('.')[13] == 5)
-                                obj.downlinkRate = o.value
-                            else if (o.oid.split('.')[13] == 12)
-                                obj.uplinkRate = o.value
-
-                            if (idx == data.length - 1)
-                                return resolve(obj)
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
+async function getOnuOpticalPowerList(options) {
+    try {
+        var aOpticalPower = []
+        var queue = new Queue(1, 10000)
+        const aONUs = await getOnuIndexList(options)
+        if (aONUs === false)
+            return false
+        
+        const promises = aONUs.map(onuIndex => {
+            var onu = parseOnuIndex(onuIndex)
+            return queue.add(async () => {
+                const onuOpticalPower = await getOnuOpticalPower(options, onu.slot, onu.pon, onu.onuId)
+                return { _onuIndex: onuIndex, ...onu, opticalPower: onuOpticalPower }
             })
-        } catch (err) {
-            return reject(err)
-        }
-    })
-}
-
-function getOnuWebAdmin(options, slot, pon, onuId) {
-    return new Promise((resolve, reject) => {
-        gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-            if (isValid && slot && pon && onuId) {
-                var oidValue = snmp_fh.getOnuWebAdmin
-                oidValue = oidValue.split(' ')
-                oidValue[161] = slot.toHex(2)
-                oidValue[163] = pon.toHex(2)
-                oidValue[165] = onuId.toHex(2)
-                oidValue = oidValue.join(' ')
-                snmp_fh.sendSnmp(OID.getOnuWebAdmin, oidValue, options, true).then(ret => {
-                    var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                    for (var i = 0; i < ret.length; i += 2)
-                        hex += ret.substring(i, i + 2) + ' '
-                    hex = hex.trim()
-
-                    var value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 01 01 01 25 01 ')[1]
-                    value = value.split(' ')
-                    if (value[1] == '81')
-                        value = value.splice(3)
-                    else
-                        value = value.splice(4)
-
-                    amount = value[191]
-                    var aProfiles = []
-                    for (var idx = 0; idx < amount; ++idx) {
-                        var onuHex = value.slice(192 + (idx * 84), 192 + (idx * 84) + 84)
-                        var onu = {}
-
-                        onu.webUsername = ''
-                        for (var s = 0; s < 16; s++)
-                            onu.webUsername += onuHex[0 + s] != '00' ? String.fromCharCode(parseInt(onuHex[0 + s], 16)) : ''
-
-                        onu.webPassword = ''
-                        for (var s = 0; s < 16; s++)
-                            onu.webPassword += onuHex[16 + s] != '00' ? String.fromCharCode(parseInt(onuHex[16 + s], 16)) : ''
-
-                        onu.group = onuHex[51] == '01' ? 'common' : onuHex[51] == '02' ? 'admin' : 'undefined'
-                        onu.groupValue = parseInt(onuHex[51])
-
-                        aProfiles.push(onu)
-                    }
-                    snmp_fh.sendSnmp(OID.confirmGetOnuWebAdmin, oidValue, options, true).then(retConfirm => {
-                        return resolve(aProfiles)
-                    })
-                })
-            } else return resolve([])
-        }, error => {
-            return resolve(false)
         })
-    })
+        return await Promise.all(promises)
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getOnuType(options, slot, pon, onuId) {
+    try {
+        var onuIndex = convertToOnuIndex(slot, pon, onuId)
+        const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
+        if (isValid && onuIndex) {
+            const data = await snmp_fh.get(options, [OID.getOnuType + '.' + onuIndex])
+            if (data[0].oid.split('.')[12] == 5 && data[0].type == 2)
+                return table.ONUType[data[0].value]
+            return null
+        } else {
+            if (options.enableWarnings)
+                console.error('getOnuType(): Invalid input parameters.')
+            return false
+        }
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getOnuUplinkInterface(options, slot, pon, onuId, ignore, ignoreValid) {
+    try {
+        if (ignore)
+            return null
+        const isValid = await gFunc.isValid(options, slot, pon, onuId, ignoreValid).catch(() => false)
+        if (isValid && slot && pon && onuId) {
+            var oids = [OID.onuGetUplinkInterfacePortName, OID.onuGetUplinkInterfacePortDescription, OID.onuGetUplinkInterfacePortType, OID.onuGetUplinkInterfacePortStatus, OID.onuGetUplinkInterfaceDownlinkRate, OID.onuGetUplinkInterfaceUplinkRate]
+            var onuIndex = convertToOnuIndex(slot, pon, onuId)
+            oids = oids.map(oid => oid + '.' + onuIndex)
+
+            const data = await snmp_fh.get(options, oids)
+            var obj = { downlinkRateUnit: 'Mbit/s', uplinkRateUnit: 'Mbit/s' }
+            data.forEach((o, idx) => {
+                if (o.oid.split('.')[13] == 1)
+                    obj.portType = o.value
+                else if (o.oid.split('.')[13] == 2)
+                    obj.portName = o.value.toString()
+                else if (o.oid.split('.')[13] == 3)
+                    obj.portDescription = o.value.toString()
+                else if (o.oid.split('.')[13] == 4) {
+                    obj.portStatus = o.value == 1 ? 'enable' : o.value == 0 ? 'disable' : 'undefined'
+                    obj.portStatusValue = o.value
+                } else if (o.oid.split('.')[13] == 5)
+                    obj.downlinkRate = o.value
+                else if (o.oid.split('.')[13] == 12)
+                    obj.uplinkRate = o.value
+            })
+            return obj
+        } else return false
+    } catch (err) {
+        throw err
+    }
+}
+
+async function getOnuWebAdmin(options, slot, pon, onuId) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
+        if (isValid && slot && pon && onuId) {
+            var oidValue = snmp_fh.getOnuWebAdmin
+            oidValue = oidValue.split(' ')
+            oidValue[161] = slot.toHex(2)
+            oidValue[163] = pon.toHex(2)
+            oidValue[165] = onuId.toHex(2)
+            oidValue = oidValue.join(' ')
+            const ret = await snmp_fh.sendSnmp(OID.getOnuWebAdmin, oidValue, options, true)
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
+
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 01 01 01 25 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
+
+            var amount = value[191]
+            var aProfiles = []
+            for (var idx = 0; idx < amount; ++idx) {
+                var onuHex = value.slice(192 + (idx * 84), 192 + (idx * 84) + 84)
+                var onu = {}
+
+                onu.webUsername = ''
+                for (var s = 0; s < 16; s++)
+                    onu.webUsername += onuHex[0 + s] != '00' ? String.fromCharCode(parseInt(onuHex[0 + s], 16)) : ''
+
+                onu.webPassword = ''
+                for (var s = 0; s < 16; s++)
+                    onu.webPassword += onuHex[16 + s] != '00' ? String.fromCharCode(parseInt(onuHex[16 + s], 16)) : ''
+
+                onu.group = onuHex[51] == '01' ? 'common' : onuHex[51] == '02' ? 'admin' : 'undefined'
+                onu.groupValue = parseInt(onuHex[51])
+
+                aProfiles.push(onu)
+            }
+            await snmp_fh.sendSnmp(OID.confirmGetOnuWebAdmin, oidValue, options, true)
+            return aProfiles
+        } else return []
+    } catch (err) {
+        throw err
+    }
 }
 
 /*
 **WARNING!** This function presented inconsistency and flaws. 
 For this reason, it was removed in version 1.0.11. We hope to 
 correct the errors and return them in future releases. */
-function getRxPowerListByPon(options, slot, pon) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon).then(isValid => {
-                if (isValid && slot && pon) {
-                    var bgmp = snmp_fh.allOpticalPower
-                    bgmp = bgmp.split(' ')
-                    bgmp[157] = slot.toHex(2)
-                    bgmp[159] = pon.toHex(2)
-                    bgmp = bgmp.join(' ')
-                    snmp_fh.sendSnmp(OID.getRxPowerListByPon, bgmp, options, true).then(ret => {
-                        var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                        for (var i = 0; i < ret.length; i += 2)
-                            hex += ret.substring(i, i + 2) + ' '
-                        hex = hex.trim()
-                        var value = hex.split('2b 06 01 04 01 ad 73 5b 01 15 03 01 01 04 01 ')[1]
-                        value = value.split(' ')
-                        if (value[1] == '81')
-                            value = value.splice(3)
-                        else
-                            value = value.splice(4)
+async function getRxPowerListByPon(options, slot, pon) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon).catch(() => false)
+        if (isValid && slot && pon) {
+            var bgmp = snmp_fh.allOpticalPower
+            bgmp = bgmp.split(' ')
+            bgmp[157] = slot.toHex(2)
+            bgmp[159] = pon.toHex(2)
+            bgmp = bgmp.join(' ')
+            const ret = await snmp_fh.sendSnmp(OID.getRxPowerListByPon, bgmp, options, true)
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 15 03 01 01 04 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
 
-                        pos = 233
-                        aOnus = []
-                        while (value[pos] != '00' && pos < value.length) {
-                            aOnus.push({ _onuIndex: convertToOnuIndex(slot, pon, parseInt(value[pos])), slot, pon, onuId: parseInt(value[pos], 16), opticalRxPower: (hexToInt(value.slice(pos + 3, pos + 7).join('')) / 100).toFixed(2), opticalRxPowerUnit: 'dBm' })
-                            pos += 8
-                        }
-                        snmp_fh.sendSnmp(OID.confirmListOpticalRxPowerByPon, bgmp, options, true).then(retConfirm => {
-                            return resolve(aOnus)
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+            var pos = 233
+            var aOnus = []
+            while (value[pos] != '00' && pos < value.length) {
+                aOnus.push({ _onuIndex: convertToOnuIndex(slot, pon, parseInt(value[pos])), slot, pon, onuId: parseInt(value[pos], 16), opticalRxPower: (hexToInt(value.slice(pos + 3, pos + 7).join('')) / 100).toFixed(2), opticalRxPowerUnit: 'dBm' })
+                pos += 8
+            }
+            await snmp_fh.sendSnmp(OID.confirmListOpticalRxPowerByPon, bgmp, options, true)
+            return aOnus
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
 //getOnuListBypon
 
-function getMacAddressList(options) {
-    return new Promise((resolve, reject) => {
-        try {
-            snmp_fh.subtree(options, OID.getSerials).then(serialList => {
-                var list = []
-                serialList.forEach(e => {
-                    list.push({ _onuIndex: parseInt(e.oid.split(OID.getSerials + '.')[1]), macAddress: e.value.toString() })
-                })
-                return resolve(list)
-            }, error => {
-                console.error('Error: Unable to connect to OLT')
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+async function getMacAddressList(options) {
+    try {
+        const serialList = await snmp_fh.subtree(options, OID.getSerials)
+        var list = []
+        serialList.forEach(e => {
+            list.push({ _onuIndex: parseInt(e.oid.split(OID.getSerials + '.')[1]), macAddress: e.value.toString() })
+        })
+        return list
+    } catch (error) {
+        console.error('Error: Unable to connect to OLT')
+        return false
+    }
 }
 
-function getUnauthorizedOnus(options) {
-    return new Promise((resolve, reject) => {
-        try {
-            snmp_fh.subtree(options, OID.getUnauth).then(varbindList => {
-                return resolve(formatVarbindList(varbindList, 'unauth'))
-            }, error => {
-                console.error('Error: Unable to connect to OLT')
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+async function getUnauthorizedOnus(options) {
+    try {
+        const varbindList = await snmp_fh.subtree(options, OID.getUnauth)
+        return formatVarbindList(varbindList, 'unauth')
+    } catch (error) {
+        console.error('Error: Unable to connect to OLT')
+        return false
+    }
 }
 
-function getWan(options, slot, pon, onuId) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId) {
-                    var getWan = snmp_fh.setWanHeader.slice(0, -6)
-                    getWan = getWan.split(' ')
-                    // Tamanho do pacote
-                    getWan[59] = '00'
-                    getWan[70] = '00'
-                    getWan[71] = '38'
-                    getWan[122] = '00'
-                    getWan[123] = '38'
+async function getWan(options, slot, pon, onuId) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
+        if (isValid && slot && pon && onuId) {
+            var getWan = snmp_fh.setWanHeader.slice(0, -6)
+            getWan = getWan.split(' ')
+            // Tamanho do pacote
+            getWan[59] = '00'
+            getWan[70] = '00'
+            getWan[71] = '38'
+            getWan[122] = '00'
+            getWan[123] = '38'
 
-                    getWan[159] = '01'
-                    getWan[161] = slot.toHex(2)
-                    getWan[163] = pon.toHex(2)
-                    getWan[165] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.
-                    getWan = getWan.join(' ')
-                    snmp_fh.sendSnmp(OID.setWan, getWan, options, true).then(ret => {
-                        snmp_fh.sendSnmp(OID.confirmSetWan, getWan, options, true).then(confirm => {
-                            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                            for (var i = 0; i < ret.length; i += 2)
-                                hex += ret.substring(i, i + 2) + ' '
-                            hex = hex.trim()
-                            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 08 01 01 01 0d 01 ')[1]
-                            value = value.split(' ')
-                            if (value[1] == '81')
-                                value = value.splice(3)
-                            else
-                                value = value.splice(4)
+            getWan[159] = '01'
+            getWan[161] = slot.toHex(2)
+            getWan[163] = pon.toHex(2)
+            getWan[165] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.
+            getWan = getWan.join(' ')
+            const ret = await snmp_fh.sendSnmp(OID.setWan, getWan, options, true)
+            await snmp_fh.sendSnmp(OID.confirmSetWan, getWan, options, true)
+            
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 08 01 01 01 0d 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
 
-                            var numProfiles = parseInt(value[185], 16)
-                            var aWans = []
-                            if (numProfiles == 0)           // quantidade de perfis WAN
-                                return resolve([])
-                            else {
-                                value = value.slice(186)    // eliminando somente o header
-                                for (var wanProfile = 0; wanProfile < numProfiles; ++wanProfile) {
-                                    var objWan = {}
-                                    objWan._wanIndex = parseInt(value[1], 16)
-                                    objWan.wanName = ''
-                                    for (var i = 0; i < 64; ++i)
-                                        if (value[2 + i] == '00')
-                                            objWan.wanName += ""
-                                        else
-                                            objWan.wanName += String.fromCharCode(parseInt(value[2 + i], 16))
-                                    objWan.wanName = objWan.wanName.trim()
+            var numProfiles = parseInt(value[185], 16)
+            var aWans = []
+            if (numProfiles == 0)           // quantidade de perfis WAN
+                return []
+            else {
+                value = value.slice(186)    // eliminando somente o header
+                for (var wanProfile = 0; wanProfile < numProfiles; ++wanProfile) {
+                    var objWan = {}
+                    objWan._wanIndex = parseInt(value[1], 16)
+                    objWan.wanName = ''
+                    for (var i = 0; i < 64; ++i)
+                        if (value[2 + i] == '00')
+                            objWan.wanName += ""
+                        else
+                            objWan.wanName += String.fromCharCode(parseInt(value[2 + i], 16))
+                    objWan.wanName = objWan.wanName.trim()
 
-                                    objWan.wanMode = value[67] == '00' ? 'tr069' : value[67] == '01' ? 'internet' : value[67] == '02' ? 'tr069_internet' : value[67] == '03' ? 'multicast' : value[67] == '04' ? 'voip' : value[67] == '05' ? 'voip_internet' : value[67] == '07' ? 'radius' : value[67] == '08' ? 'radius_internet' : value[67] == '64' ? 'other' : 'other_' + value[67]
-                                    objWan.wanConnType = value[69] == '00' ? 'bridge' : value[69] == '01' ? 'router' : 'other_' + value[69]
-                                    objWan.wanVlan = parseInt(value[70] + value[71], 16)
-                                    if (objWan.wanVlan == 65535)
-                                        objWan.wanVlan = null
-                                    objWan.wanCos = parseInt(value[73], 16)
-                                    objWan.wanNat = value[74] == '01' ? true : false
-                                    objWan.ipMode = value[76] == '00' ? 'dhcp' : value[76] == '01' ? 'static' : value[76] == '02' ? 'pppoe' : 'other_' + value[76]
-                                    objWan.wanIp = `${parseInt(value[77], 16)}.${parseInt(value[78], 16)}.${parseInt(value[79], 16)}.${parseInt(value[80], 16)}`
+                    objWan.wanMode = value[67] == '00' ? 'tr069' : value[67] == '01' ? 'internet' : value[67] == '02' ? 'tr069_internet' : value[67] == '03' ? 'multicast' : value[67] == '04' ? 'voip' : value[67] == '05' ? 'voip_internet' : value[67] == '07' ? 'radius' : value[67] == '08' ? 'radius_internet' : value[67] == '64' ? 'other' : 'other_' + value[67]
+                    objWan.wanConnType = value[69] == '00' ? 'bridge' : value[69] == '01' ? 'router' : 'other_' + value[69]
+                    objWan.wanVlan = parseInt(value[70] + value[71], 16)
+                    if (objWan.wanVlan == 65535)
+                        objWan.wanVlan = null
+                    objWan.wanCos = parseInt(value[73], 16)
+                    objWan.wanNat = value[74] == '01' ? true : false
+                    objWan.ipMode = value[76] == '00' ? 'dhcp' : value[76] == '01' ? 'static' : value[76] == '02' ? 'pppoe' : 'other_' + value[76]
+                    objWan.wanIp = `${parseInt(value[77], 16)}.${parseInt(value[78], 16)}.${parseInt(value[79], 16)}.${parseInt(value[80], 16)}`
 
-                                    if (value[84] == '00')
-                                        objWan.wanMask = '0.0.0.0'
-                                    else {
-                                        var maskInt = parseInt(value[84], 16)
-                                        var maskOne = Array(maskInt).fill('1')
-                                        maskOne = maskOne.join(',')
-                                        maskOne = maskOne.replaceAll(',', '')
+                    if (value[84] == '00')
+                        objWan.wanMask = '0.0.0.0'
+                    else {
+                        var maskInt = parseInt(value[84], 16)
+                        var maskOne = Array(maskInt).fill('1')
+                        maskOne = maskOne.join(',')
+                        maskOne = maskOne.replaceAll(',', '')
 
-                                        var maskZeros = Array(32 - maskInt).fill('0')
-                                        maskZeros = maskZeros.join(',')
-                                        maskZeros = maskZeros.replaceAll(',', '')
+                        var maskZeros = Array(32 - maskInt).fill('0')
+                        maskZeros = maskZeros.join(',')
+                        maskZeros = maskZeros.replaceAll(',', '')
 
-                                        var mask = maskOne + maskZeros
-                                        objWan.wanMask = `${parseInt(mask.slice(0, 8), 2)}.${parseInt(mask.slice(8, 16), 2)}.${parseInt(mask.slice(16, 24), 2)}.${parseInt(mask.slice(24, 32), 2)}`
+                        var mask = maskOne + maskZeros
+                        objWan.wanMask = `${parseInt(mask.slice(0, 8), 2)}.${parseInt(mask.slice(8, 16), 2)}.${parseInt(mask.slice(16, 24), 2)}.${parseInt(mask.slice(24, 32), 2)}`
 
-                                    }
+                    }
 
-                                    objWan.wanGateway = `${parseInt(value[85], 16)}.${parseInt(value[86], 16)}.${parseInt(value[87], 16)}.${parseInt(value[88], 16)}`
-                                    objWan.wanMasterDNS = `${parseInt(value[89], 16)}.${parseInt(value[90], 16)}.${parseInt(value[91], 16)}.${parseInt(value[92], 16)}`
-                                    objWan.wanSlaveDNS = `${parseInt(value[93], 16)}.${parseInt(value[94], 16)}.${parseInt(value[95], 16)}.${parseInt(value[96], 16)}`
-                                    objWan.pppoeProxy = value[283] == '01' ? true : false
+                    objWan.wanGateway = `${parseInt(value[85], 16)}.${parseInt(value[86], 16)}.${parseInt(value[87], 16)}.${parseInt(value[88], 16)}`
+                    objWan.wanMasterDNS = `${parseInt(value[89], 16)}.${parseInt(value[90], 16)}.${parseInt(value[91], 16)}.${parseInt(value[92], 16)}`
+                    objWan.wanSlaveDNS = `${parseInt(value[93], 16)}.${parseInt(value[94], 16)}.${parseInt(value[95], 16)}.${parseInt(value[96], 16)}`
+                    objWan.pppoeProxy = value[283] == '01' ? true : false
 
-                                    objWan.pppoeUsername = ''
-                                    for (var i = 0; i < 32; ++i)
-                                        if (value[98 + i] == '00')
-                                            objWan.pppoeUsername += ""
-                                        else
-                                            objWan.pppoeUsername += String.fromCharCode(parseInt(value[98 + i], 16))
-                                    objWan.pppoeUsername = objWan.pppoeUsername.trim()
+                    objWan.pppoeUsername = ''
+                    for (var i = 0; i < 32; ++i)
+                        if (value[98 + i] == '00')
+                            objWan.pppoeUsername += ""
+                        else
+                            objWan.pppoeUsername += String.fromCharCode(parseInt(value[98 + i], 16))
+                    objWan.pppoeUsername = objWan.pppoeUsername.trim()
 
-                                    objWan.pppoePassword = ''
-                                    for (var i = 0; i < 32; ++i)
-                                        if (value[130 + i] == '00')
-                                            objWan.pppoeUsername += ""
-                                        else
-                                            objWan.pppoePassword += String.fromCharCode(parseInt(value[130 + i], 16))
-                                    objWan.pppoePassword = objWan.pppoePassword.trim()
+                    objWan.pppoePassword = ''
+                    for (var i = 0; i < 32; ++i)
+                        if (value[130 + i] == '00')
+                            objWan.pppoeUsername += ""
+                        else
+                            objWan.pppoePassword += String.fromCharCode(parseInt(value[130 + i], 16))
+                    objWan.pppoePassword = objWan.pppoePassword.trim()
 
-                                    objWan.pppoeName = ''
-                                    for (var i = 0; i < 32; ++i)
-                                        if (value[162 + i] == '00')
-                                            objWan.pppoeUsername += ""
-                                        else
-                                            objWan.pppoeName += String.fromCharCode(parseInt(value[162 + i], 16))
-                                    objWan.pppoeName = objWan.pppoeName.trim()
+                    objWan.pppoeName = ''
+                    for (var i = 0; i < 32; ++i)
+                        if (value[162 + i] == '00')
+                            objWan.pppoeUsername += ""
+                        else
+                            objWan.pppoeName += String.fromCharCode(parseInt(value[162 + i], 16))
+                    objWan.pppoeName = objWan.pppoeName.trim()
 
-                                    objWan.pppoeMode = value[195] == '00' ? 'auto' : value[195] == '01' ? 'payload' : 'other_' + value[195]
-                                    objWan.wanQoS = value[196] == '01' ? true : value[196] == '00' ? false : 'other_' + value[196]
+                    objWan.pppoeMode = value[195] == '00' ? 'auto' : value[195] == '01' ? 'payload' : 'other_' + value[195]
+                    objWan.wanQoS = value[196] == '01' ? true : value[196] == '00' ? false : 'other_' + value[196]
 
-                                    objWan.lan = {}
-                                    var lans = (parseInt(value[197], 16)).toString(2).padStart(4, '0')
-                                    lans = lans.split('')
-                                    objWan.lan.lan1 = lans[0] == '1' ? true : false
-                                    objWan.lan.lan2 = lans[1] == '1' ? true : false
-                                    objWan.lan.lan3 = lans[2] == '1' ? true : false
-                                    objWan.lan.lan4 = lans[3] == '1' ? true : false
+                    objWan.lan = {}
+                    var lans = (parseInt(value[197], 16)).toString(2).padStart(4, '0')
+                    lans = lans.split('')
+                    objWan.lan.lan1 = lans[0] == '1' ? true : false
+                    objWan.lan.lan2 = lans[1] == '1' ? true : false
+                    objWan.lan.lan3 = lans[2] == '1' ? true : false
+                    objWan.lan.lan4 = lans[3] == '1' ? true : false
 
-                                    objWan.ssid = {}
-                                    var ssids = (parseInt(value[198], 16)).toString(2).padStart(4, '0')
-                                    ssids = ssids.split('')
-                                    objWan.ssid.ssid1 = ssids[0] == '1' ? true : false
-                                    objWan.ssid.ssid2 = ssids[1] == '1' ? true : false
-                                    objWan.ssid.ssid3 = ssids[2] == '1' ? true : false
-                                    objWan.ssid.ssid4 = ssids[3] == '1' ? true : false
+                    objWan.ssid = {}
+                    var ssids = (parseInt(value[198], 16)).toString(2).padStart(4, '0')
+                    ssids = ssids.split('')
+                    objWan.ssid.ssid1 = ssids[0] == '1' ? true : false
+                    objWan.ssid.ssid2 = ssids[1] == '1' ? true : false
+                    objWan.ssid.ssid3 = ssids[2] == '1' ? true : false
+                    objWan.ssid.ssid4 = ssids[3] == '1' ? true : false
 
-                                    objWan.vlanMode = value[199] == '01' ? 'tag' : value[199] == '03' ? 'transparent' : 'other_' + value[199]
+                    objWan.vlanMode = value[199] == '01' ? 'tag' : value[199] == '03' ? 'transparent' : 'other_' + value[199]
 
-                                    objWan.translationValue = parseInt(value[201] + value[202], 16)
-                                    if (objWan.translationValue == 65535)
-                                        objWan.translationValue = null
+                    objWan.translationValue = parseInt(value[201] + value[202], 16)
+                    if (objWan.translationValue == 65535)
+                        objWan.translationValue = null
 
-                                    objWan.cos = value[204] == '00' ? null : parseInt(value[204], 16)
-                                    objWan.qInQ = value[205] == '01' ? true : false
-                                    objWan.tpid = parseInt(value[206] + value[207], 16)
+                    objWan.cos = value[204] == '00' ? null : parseInt(value[204], 16)
+                    objWan.qInQ = value[205] == '01' ? true : false
+                    objWan.tpid = parseInt(value[206] + value[207], 16)
 
-                                    objWan.svlan = parseInt(value[208] + value[209], 16)
-                                    if (objWan.svlan == 65535)
-                                        objWan.svlan = null
+                    objWan.svlan = parseInt(value[208] + value[209], 16)
+                    if (objWan.svlan == 65535)
+                        objWan.svlan = null
 
-                                    objWan.svlanCos = parseInt(value[210] + value[211], 16)
-                                    if (objWan.svlanCos == 65535)
-                                        objWan.svlanCos = null
+                    objWan.svlanCos = parseInt(value[210] + value[211], 16)
+                    if (objWan.svlanCos == 65535)
+                        objWan.svlanCos = null
 
-                                    aWans.push(objWan)
-                                    value = value.slice(229)        // Tamanho do perfil WAN
-                                }
-                            }
-                            return resolve(aWans)
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+                    aWans.push(objWan)
+                    value = value.slice(229)        // Tamanho do perfil WAN
+                }
+            }
+            return aWans
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
 function hexToInt(hex) {
@@ -1502,158 +1310,127 @@ function parseOnuIndex(onuIndex) {
     return obj
 }
 
-function rebootOnu(options, slot, pon, onuId) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId) {
-                    var bgmp = snmp_fh.rebootOnu
-                    bgmp = bgmp.split(' ')
-                    bgmp[157] = slot.toHex(2)
-                    bgmp[159] = pon.toHex(2)
-                    bgmp[161] = onuId.toHex(2)
-                    bgmp = bgmp.join(' ')
-                    snmp_fh.sendSnmp(OID.rebootOnu, bgmp, options, true).then(ret => {
-                        var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                        for (var i = 0; i < ret.length; i += 2)
-                            hex += ret.substring(i, i + 2) + ' '
-                        hex = hex.trim()
-                        var value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 02 01 01 06 01 ')[1]
-                        value = value.split(' ')
-                        if (value[1] == '81')
-                            value = value.splice(3)
-                        else
-                            value = value.splice(4)
+async function rebootOnu(options, slot, pon, onuId) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
+        if (isValid && slot && pon && onuId) {
+            var bgmp = snmp_fh.rebootOnu
+            bgmp = bgmp.split(' ')
+            bgmp[157] = slot.toHex(2)
+            bgmp[159] = pon.toHex(2)
+            bgmp[161] = onuId.toHex(2)
+            bgmp = bgmp.join(' ')
+            const ret = await snmp_fh.sendSnmp(OID.rebootOnu, bgmp, options, true)
+            var hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (var i = 0; i < ret.length; i += 2)
+                hex += ret.substring(i, i + 2) + ' '
+            hex = hex.trim()
+            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 02 01 01 06 01 ')[1]
+            value = value.split(' ')
+            if (value[1] == '81')
+                value = value.splice(3)
+            else
+                value = value.splice(4)
 
-                        if (value.length == 130)
-                            return resolve(true)
-                        return resolve(false)
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+            if (value.length == 130)
+                return true
+            return false
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
-function setOnuBandwidth(options, slot, pon, onuId, upBw, downBw) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId && Number.isInteger(upBw) && Number.isInteger(downBw)) {
-                    if (upBw < 256) upBw = 256
-                    if (upBw > 1000000) upBw = 1000000
-                    if (downBw < 256) downBw = 256
-                    if (downBw > 1000000) downBw = 1000000
+async function setOnuBandwidth(options, slot, pon, onuId, upBw, downBw) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
+        if (isValid && slot && pon && onuId && Number.isInteger(upBw) && Number.isInteger(downBw)) {
+            if (upBw < 256) upBw = 256
+            if (upBw > 1000000) upBw = 1000000
+            if (downBw < 256) downBw = 256
+            if (downBw > 1000000) downBw = 1000000
 
-                    var setBW = snmp_fh.setOnuBandwidth
-                    setBW = setBW.split(' ')
-                    setBW[161] = slot.toHex(2)
-                    setBW[163] = pon.toHex(2)
-                    setBW[165] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.  
-                    setBW[181] = upBw.toHex(6).slice(0, 2)
-                    setBW[182] = upBw.toHex(6).slice(2, 4)
-                    setBW[183] = upBw.toHex(6).slice(4, 6)
-                    setBW[185] = downBw.toHex(6).slice(0, 2)
-                    setBW[186] = downBw.toHex(6).slice(2, 4)
-                    setBW[187] = downBw.toHex(6).slice(4, 6)
-                    setBW = setBW.join(' ')
-                    snmp_fh.sendSnmp(OID.setOnuBandwidth, setBW, options, true).then(ret => {
-                        snmp_fh.sendSnmp(OID.confirmSetOnuBandwidth, setBW, options, true).then(retConfirm => {
-                            return resolve(convertToOnuIndex(slot, pon, onuId))
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
-            })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+            var setBW = snmp_fh.setOnuBandwidth
+            setBW = setBW.split(' ')
+            setBW[161] = slot.toHex(2)
+            setBW[163] = pon.toHex(2)
+            setBW[165] = onuId.toHex(2)            // ONU NUMBER / ONU Authorized No.  
+            setBW[181] = upBw.toHex(6).slice(0, 2)
+            setBW[182] = upBw.toHex(6).slice(2, 4)
+            setBW[183] = upBw.toHex(6).slice(4, 6)
+            setBW[185] = downBw.toHex(6).slice(0, 2)
+            setBW[186] = downBw.toHex(6).slice(2, 4)
+            setBW[187] = downBw.toHex(6).slice(4, 6)
+            setBW = setBW.join(' ')
+            const ret = await snmp_fh.sendSnmp(OID.setOnuBandwidth, setBW, options, true)
+            await snmp_fh.sendSnmp(OID.confirmSetOnuBandwidth, setBW, options, true)
+            return convertToOnuIndex(slot, pon, onuId)
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
-function setOnuWebAdmin(options, slot, pon, onuId, aWebConfig) {
-    return new Promise((resolve, reject) => {
-        try {
-            gFunc.isValid(options, slot, pon, onuId).then(isValid => {
-                if (isValid && slot && pon && onuId) {
-                    var oidValue = ''
-                    aWebConfig.forEach(webConfig => {
-                        var bodySetOnuWebAdmin = snmp_fh.bodySetOnuWebAdmin
-                        bodySetOnuWebAdmin = bodySetOnuWebAdmin.split(' ')
+async function setOnuWebAdmin(options, slot, pon, onuId, aWebConfig) {
+    try {
+        const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
+        if (isValid && slot && pon && onuId) {
+            var oidValue = ''
+            aWebConfig.forEach(webConfig => {
+                var bodySetOnuWebAdmin = snmp_fh.bodySetOnuWebAdmin
+                bodySetOnuWebAdmin = bodySetOnuWebAdmin.split(' ')
 
-                        for (var idx = 0; idx < 16 && webConfig.username.split('')[idx]; ++idx)
-                            bodySetOnuWebAdmin[idx] = (webConfig.username).charCodeAt(idx).toString(16)
+                for (var idx = 0; idx < 16 && webConfig.username.split('')[idx]; ++idx)
+                    bodySetOnuWebAdmin[idx] = (webConfig.username).charCodeAt(idx).toString(16)
 
-                        for (var idx = 0; idx < 16 && webConfig.password.split('')[idx]; ++idx)
-                            bodySetOnuWebAdmin[idx + 16] = (webConfig.password).charCodeAt(idx).toString(16)
+                for (var idx = 0; idx < 16 && webConfig.password.split('')[idx]; ++idx)
+                    bodySetOnuWebAdmin[idx + 16] = (webConfig.password).charCodeAt(idx).toString(16)
 
-                        bodySetOnuWebAdmin[51] = webConfig.group == 'admin' || webConfig.group == 2 ? '02' : '01'
-                        oidValue += bodySetOnuWebAdmin.join(' ') + ' '
-                    })
-                    oidValue = oidValue.trim()
-
-                    var headerSetOnuWebAdmin = snmp_fh.headerSetOnuWebAdmin
-                    headerSetOnuWebAdmin = headerSetOnuWebAdmin.split(' ')
-
-                    headerSetOnuWebAdmin[161] = slot.toHex(2)
-                    headerSetOnuWebAdmin[163] = pon.toHex(2)
-                    headerSetOnuWebAdmin[165] = onuId.toHex(2)
-                    headerSetOnuWebAdmin[187] = aWebConfig.length.toHex(2)
-
-                    var packSize = oidValue.split(' ').length + 64
-                    headerSetOnuWebAdmin[70] = packSize.toHex(4).slice(0, 2)
-                    headerSetOnuWebAdmin[71] = packSize.toHex(4).slice(2, 4)
-                    headerSetOnuWebAdmin[122] = headerSetOnuWebAdmin[70]
-                    headerSetOnuWebAdmin[123] = headerSetOnuWebAdmin[71]
-                    headerSetOnuWebAdmin = headerSetOnuWebAdmin.join(' ')
-                    oidValue = headerSetOnuWebAdmin + ' ' + oidValue
-
-                    snmp_fh.sendSnmp(OID.getOnuWebAdmin, oidValue, options, true).then(ret => {
-                        snmp_fh.sendSnmp(OID.confirmGetOnuWebAdmin, oidValue, options, true).then(retConfirm => {
-                            return resolve(true)
-                        })
-                    })
-                } else return resolve(false)
-            }, error => {
-                return resolve(false)
+                bodySetOnuWebAdmin[51] = webConfig.group == 'admin' || webConfig.group == 2 ? '02' : '01'
+                oidValue += bodySetOnuWebAdmin.join(' ') + ' '
             })
-        } catch (err) {
-            return reject(err)
-        }
-    })
+            oidValue = oidValue.trim()
+
+            var headerSetOnuWebAdmin = snmp_fh.headerSetOnuWebAdmin
+            headerSetOnuWebAdmin = headerSetOnuWebAdmin.split(' ')
+
+            headerSetOnuWebAdmin[161] = slot.toHex(2)
+            headerSetOnuWebAdmin[163] = pon.toHex(2)
+            headerSetOnuWebAdmin[165] = onuId.toHex(2)
+            headerSetOnuWebAdmin[187] = aWebConfig.length.toHex(2)
+
+            var packSize = oidValue.split(' ').length + 64
+            headerSetOnuWebAdmin[70] = packSize.toHex(4).slice(0, 2)
+            headerSetOnuWebAdmin[71] = packSize.toHex(4).slice(2, 4)
+            headerSetOnuWebAdmin[122] = headerSetOnuWebAdmin[70]
+            headerSetOnuWebAdmin[123] = headerSetOnuWebAdmin[71]
+            headerSetOnuWebAdmin = headerSetOnuWebAdmin.join(' ')
+            oidValue = headerSetOnuWebAdmin + ' ' + oidValue
+
+            const ret = await snmp_fh.sendSnmp(OID.getOnuWebAdmin, oidValue, options, true)
+            await snmp_fh.sendSnmp(OID.confirmGetOnuWebAdmin, oidValue, options, true)
+            return true
+        } else return false
+    } catch (err) {
+        throw err
+    }
 }
 
-function setLanPorts(options, slot, pon, onuId, aLanPorts) {
-    return new Promise((resolve, reject) => {
-        try {
-            getOnuType(options, slot, pon, onuId).then(onuType => {
-                if (onuType && onuType.type == 'GPON')
-                    setLanPortsGPON(options, slot, pon, onuId, aLanPorts).then(resp => {
-                        return resolve(resp)
-                    }, errorEPON => {
-                        return reject(errorEPON)
-                    })
-                else if (onuType && onuType.type == 'EPON')
-                    setLanPortsEPON(options, slot, pon, onuId, aLanPorts).then(resp => {
-                        return resolve(resp)
-                    }, errorGPON => {
-                        return reject(errorGPON)
-                    })
-                else {
-                    console.error("setLanPorts(): The ONU type was not identified as GPON or EPON in 'src/tables.js' -> 'ONUType'. Use the setLanPortsGPON (options, slot, pon, onuId, aLanPorts) or setLanPortsEPON (options, slot, pon, onuId, aLanPorts) function.")
-                }
-            }, err => {
-                return reject(err)
-            })
-        } catch (err) {
-            return reject(err)
+async function setLanPorts(options, slot, pon, onuId, aLanPorts) {
+    try {
+        const onuType = await getOnuType(options, slot, pon, onuId)
+        if (onuType && onuType.type == 'GPON') {
+            const resp = await setLanPortsGPON(options, slot, pon, onuId, aLanPorts)
+            return resp
+        } else if (onuType && onuType.type == 'EPON') {
+            const resp = await setLanPortsEPON(options, slot, pon, onuId, aLanPorts)
+            return resp
+        } else {
+            console.error("setLanPorts(): The ONU type was not identified as GPON or EPON in 'src/tables.js' -> 'ONUType'. Use the setLanPortsGPON (options, slot, pon, onuId, aLanPorts) or setLanPortsEPON (options, slot, pon, onuId, aLanPorts) function.")
         }
-    })
+    } catch (err) {
+        throw err
+    }
 }
 
 function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
@@ -2751,156 +2528,6 @@ function setWan(options, slot, pon, onuId, wanProfiles) {
     })
 }
 
-/*
- * 
- * @param {*} options 
- * @param {*} param1 
- * @returns VEIP attrs of onu 
-*/
-function getOnuVeip(options, { onuIndex, veipIndex = 1, addIndex = 1, ignoreValid = false }) 
-{
-    return new Promise((resolve, reject) => 
-    {
-        try 
-        {
-            let _onu = parseOnuIndex(onuIndex)
-            gFunc.isValid(options, _onu.slot, _onu.pon, _onu.onuId, ignoreValid).then(isValid => 
-            {
-                if (isValid && onuIndex) 
-                {
-                    let veip = OID.gponVeipService;
-                    let oids = Object.values(veip);
-                    let id = '.' + (onuIndex + addIndex) + '.' + veipIndex ; 
-                    let self = Object.assign({}, {});
-                    let no_found = 0;
-                    oids = oids.map(oid => oid + id);
-                    snmp_fh.get(options, oids)
-                    .then( data => 
-                    {
-                        data.map((obj) =>
-                        {
-                            let key = gFunc.getKeyByValue(veip,(new String(obj.oid).replace(id, '')));
-                            switch(obj.type)
-                            {
-                                case 2:
-                                    self[key] = parseInt(obj.value);
-                                    break;
-                                case 4:
-                                    self[key] = new String(obj.value).toString('utf-8');
-                                    break;
-                                default:
-                                    self[key] = null;
-                                    no_found++;
-                                    break;
-                            }
-                        });
-                        if(oids.length === no_found)
-                            return reject({
-                                status: 404,
-                                message: `VEIP not exists onuIndex: ${ onuIndex }`
-                            });
-
-                        return resolve(self);
-                    }, error => 
-                    {
-                        return reject({
-                            status: 500,
-                            message: 'Unable to connect to OLT'
-                        });
-                    })
-                }
-                else 
-                {
-                    return reject({
-                        status: 400,
-                        message: `onuIndex: ${ onuIndex } unreachable`
-                    });
-                }
-            })
-        } catch (error) {
-            return reject(error)
-        }
-    })
-}
-
-function setOnuVeip(options, { 
-    onuIndex, 
-    veipIndex = 1, 
-    addIndex = 1, 
-    ignoreValid = false 
-}, 
-config = {})
-{
-    return new Promise((resolve, reject) => 
-    {
-        try 
-        {
-            let _onu = parseOnuIndex(onuIndex)
-            gFunc.isValid(options, _onu.slot, _onu.pon, _onu.onuId, ignoreValid).then(isValid => 
-            {
-                if (isValid && onuIndex) 
-                {
-                    config = Object.assign(veipDefault, config);       
-                    let veip = OID.gponVeipService;
-                    let id = '.' + (onuIndex + addIndex) + '.' + veipIndex ; 
-                    let self = Object.assign({}, {});
-                    let no_found = 0;
-                    let oids = [];
-                    Object.keys(veip).map((key) =>
-                    {
-                        let obj     = {};
-                        obj.oid     = veip[key] + id;
-                        obj.type    = (key === 'profile_name') ? 'octet-string' : 'integer32';
-                        obj.value   = config[key];
-                        oids.push(obj);
-                    });
-                    snmp_fh.set(options, oids)
-                    .then( data => 
-                    {
-                        data.map((obj) =>
-                        {
-                            let key = gFunc.getKeyByValue(veip,(new String(obj.oid).replace(id, '')));
-                            switch(obj.type)
-                            {
-                                case 2:
-                                    self[key] = parseInt(obj.value);
-                                    break;
-                                case 4:
-                                    self[key] = new String(obj.value).toString('utf-8');
-                                    break;
-                                default:
-                                    self[key] = null;
-                                    no_found++;
-                                    break;
-                            }
-                        });
-                        if(oids.length === no_found)
-                            return reject({
-                                status: 404,
-                                message: `VEIP not exists onuIndex: ${ onuIndex }`
-                            });
-                        return resolve(self)
-                    }, error => 
-                    {
-                        return reject({
-                            status: 500,
-                            message: 'Unable to connect to OLT'
-                        });
-                    })
-                }
-                else 
-                {
-                    return reject({
-                        status: 400,
-                        message: `onuIndex: ${ onuIndex } unreachable`
-                    });
-                }
-            })
-        } catch (error) {
-            return reject(error)
-        }
-    })
-}
 
 module.exports = {
     addAllOnus,
@@ -2947,6 +2574,4 @@ module.exports = {
     setOnuBandwidth,
     setOnuWebAdmin,
     setWan,
-    getOnuVeip,
-    setOnuVeip,
 }
