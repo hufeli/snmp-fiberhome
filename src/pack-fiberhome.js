@@ -245,9 +245,9 @@ function subtree(opt, oid) {
         const options = { ...defaultOptions, ...opt }
         const aVarbinds = []
         const session = snmp.createSession(options.ip || options.host, options.community, options)
-        session.subtree(oid, options.maxRepetitions, function feedCb(varbinds) {
+        session.subtree(oid, options.maxRepetitions, (varbinds) => {
             aVarbinds.push(...varbinds)
-        }, function doneCb(error) {
+        }, (error) => {
             session.close()
             if (error)
                 return reject(error.toString())
@@ -261,7 +261,7 @@ function get(opt, oids) {
     return new Promise((resolve, reject) => {
         const options = { ...defaultOptions, ...opt }
         const session = snmp.createSession(options.ip || options.host, options.community, options)
-        session.get(oids, function (error, varbinds) {
+        session.get(oids, (error, varbinds) => {
             session.close()
             if (error) {
                 return reject(error)
@@ -272,14 +272,12 @@ function get(opt, oids) {
     })
 }
 
-function set(opt, _oids) 
-{
+function set(opt, _oids) {
     return new Promise((resolve, reject) => {
         const options = { ...defaultOptions, ...opt }
         const session = snmp.createSession(options.ip || options.host, options.community, options)
-        const oids = [];
-        _oids.map((oid) => {
-            const _oid = Object.assign({}, oid);
+        const oids = _oids.map((oid) => {
+            const _oid = { ...oid }
             switch (_oid.type) {
                 case 'octet-string':
                     _oid.type = snmp.ObjectType.OctetString
@@ -288,20 +286,21 @@ function set(opt, _oids)
                     _oid.type = snmp.ObjectType.Integer32
                     break;
             }
-            oids.push(_oid);
-        });
-        session.set(oids, function (error, varbinds) {
+            return _oid
+        })
+
+        session.set(oids, (error, varbinds) => {
             session.close()
             if (error) {
                 return reject(error)
             } else {
                 if (options.enableLogs) {
-                    for (let i = 0; i < varbinds.length; i++) {
-                        if (snmp.isVarbindError (varbinds[i]))
-                            console.error (snmp.varbindError (varbinds[i]));
+                    varbinds.forEach(varbind => {
+                        if (snmp.isVarbindError(varbind))
+                            console.error(snmp.varbindError(varbind))
                         else
-                            console.log (varbinds[i].oid + "|" + varbinds[i].value);
-                    }
+                            console.log(varbind.oid + "|" + varbind.value)
+                    })
                 }
                 return resolve(varbinds)
             }

@@ -87,49 +87,44 @@ const OIDs = {
     }
 }
 
-/* Válido para números de tamanho máx. == 16383 em decimal */
+/* Válido para números de qualquer tamanho (limitado pelo MAX_SAFE_INTEGER do JS) */
 function oidDecodeHexToInt(hexValue) {
     const hex = hexValue.replaceAll(' ', '')
-    let bin = (parseInt(hex, 16).toString(2)).padStart(8, '0')
-    bin = bin.split('')
-    bin[0] = '0'
-    for (let i = 8; i >= 0; --i)
-        bin[i] = bin[i - 1]
-    bin = bin.join('')
-    const dec = parseInt(bin, 2)
-    return dec
+    let value = 0
+    for (let i = 0; i < hex.length; i += 2) {
+        const byte = parseInt(hex.substr(i, 2), 16)
+        value = (value * 128) + (byte & 0x7F)
+    }
+    return value
 }
 
-/* Válido para números de tamanho máx. == 16383 em decimal */
+/* Válido para números de qualquer tamanho (limitado pelo MAX_SAFE_INTEGER do JS) */
 function oidEncodeIntToHex(intValue) {
-    let bin = null
-    let hex = null
-    if (intValue > 0 && intValue <= 127) {
-        bin = ("00000000" + (intValue.toString(2))).slice(-8)
-        hex = parseInt(bin, 2).toHex(2)
-    } else if (intValue > 127 && intValue <= 16383) {
-        bin = ("0000000000000000" + (intValue.toString(2))).slice(-16)
-        bin = bin.split('')
-        for (let i = 0; i < 8; ++i)
-            bin[i] = bin[i + 1]
-
-        bin[8] = '0'
-        bin[0] = '1'
-        bin = bin.join('')
-        hex = ("0000" + parseInt(bin.slice(0, 8), 2).toString(16) + parseInt(bin.slice(8, 16), 2).toString(16)).slice(-4)
-    } else if (intValue > 16383 && intValue <= 2097151) {
-        bin = ("000000000000000000000000" + (intValue.toString(2))).slice(-24)
-        //TODO: implementar
-        // Basic implementation for larger values
-        bin = bin.split('')
-        // Shift bits to make room for continuation bits
-        // This is a placeholder logic - proper variable length quantity encoding needed
-        // For now returning null as per original intent unless implemented properly
-        return null 
+    if (intValue < 0) return null
+    
+    let hex = ''
+    const chunks = []
+    let value = intValue
+    
+    // Caso especial para 0
+    if (value === 0) {
+        chunks.push(0)
     } else {
-        //console.log("Erro: O tamanho do número", intValue, " em 'oidEncodeIntToHex', não é suportado. Valor máximo: 2097151 ")
-        return null
+        // Divide em pedaços de 7 bits
+        while (value > 0) {
+            chunks.unshift(value & 0x7F) // Pega os últimos 7 bits
+            value = value >>> 7          // Shift right por 7 bits (unsigned)
+        }
     }
+    
+    // Define o bit mais significativo (MSB) para todos, exceto o último pedaço
+    for (let i = 0; i < chunks.length - 1; i++) {
+        chunks[i] |= 0x80
+    }
+    
+    // Converte para string hexadecimal
+    hex = chunks.map(chunk => chunk.toString(16).padStart(2, '0')).join('')
+    
     return hex
 }
 
