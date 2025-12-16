@@ -201,23 +201,41 @@ function sendSnmp(oid, value, opt, waitResponse = false) {
         }
         const pkg = createPackage(objSNMP)
         const packageFormatted = Buffer.from(pkg.replaceAll(' ', ''), "hex")
+        
+        let timeoutTimer = null
+
+        const closeSocket = () => {
+            if (timeoutTimer) clearTimeout(timeoutTimer)
+            try {
+                client.close()
+            } catch (e) { }
+        }
+
         client.once("message", function (msg, rinfo) {
-            client.close()
+            closeSocket()
             if (waitResponse)
                 return resolve(msg.toString("hex"))
-
-        })
-        client.once("err", function (err) {
-            //console.log("client error: \n" + err.stack)
-            client.close()
         })
 
-        client.once("close", function () {
-            //console.log("closed.")
+        client.once("error", function (err) {
+            closeSocket()
+            return reject(err)
         })
+
         client.send(packageFormatted, 0, packageFormatted.length, options.port, options.ip || options.host, function (err, bytes) {
-            if (!waitResponse)
+            if (err) {
+                closeSocket()
+                return reject(err)
+            }
+            if (!waitResponse) {
+                closeSocket()
                 return resolve(true)
+            } else {
+                timeoutTimer = setTimeout(() => {
+                    closeSocket()
+                    reject(new Error("Timeout waiting for SNMP response"))
+                }, options.timeout || 2000)
+            }
         })
     })
 }
@@ -230,6 +248,7 @@ function subtree(opt, oid) {
         session.subtree(oid, options.maxRepetitions, function feedCb(varbinds) {
             aVarbinds.push(...varbinds)
         }, function doneCb(error) {
+            session.close()
             if (error)
                 return reject(error.toString())
             else
@@ -243,13 +262,12 @@ function get(opt, oids) {
         const options = { ...defaultOptions, ...opt }
         const session = snmp.createSession(options.ip || options.host, options.community, options)
         session.get(oids, function (error, varbinds) {
+            session.close()
             if (error) {
                 return reject(error)
             } else {
                 return resolve(varbinds)
             }
-            // If done, close the session
-            session.close()
         })
     })
 }
@@ -273,23 +291,20 @@ function set(opt, _oids)
             oids.push(_oid);
         });
         session.set(oids, function (error, varbinds) {
+            session.close()
             if (error) {
                 return reject(error)
             } else {
-                for (let i = 0; i < varbinds.length; i++) {
-                    // for version 1 we can assume all OIDs were successful
-                    console.log (varbinds[i].oid + "|" + varbinds[i].value);
-                
-                    // for version 2c we must check each OID for an error condition
-                    if (snmp.isVarbindError (varbinds[i]))
-                        console.error (snmp.varbindError (varbinds[i]));
-                    else
-                        console.log (varbinds[i].oid + "|" + varbinds[i].value);
+                if (options.enableLogs) {
+                    for (let i = 0; i < varbinds.length; i++) {
+                        if (snmp.isVarbindError (varbinds[i]))
+                            console.error (snmp.varbindError (varbinds[i]));
+                        else
+                            console.log (varbinds[i].oid + "|" + varbinds[i].value);
+                    }
                 }
                 return resolve(varbinds)
             }
-            // If done, close the session
-            //session.close()
         })
     })
 }

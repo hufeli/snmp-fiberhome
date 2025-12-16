@@ -12,8 +12,8 @@ function convertToOnuIndex(slot, pon, onuId) {
 }
 
 function parsePonIndex(ponIndex) {
-    var indexBin = (parseInt(ponIndex)).toString(2)
-    var obj = {
+    const indexBin = (parseInt(ponIndex)).toString(2)
+    const obj = {
         _ponIndex: ponIndex,
         slot: parseInt(indexBin.slice(-33, -25), 2),
         pon: parseInt(indexBin.slice(-25, -19), 2),
@@ -23,8 +23,8 @@ function parsePonIndex(ponIndex) {
 
 async function getBasicPonPortList(options) {
     try {
-        var aPon = []
-        var varbinds = []
+        const aPon = []
+        const varbinds = []
         
         try {
             const varbinds4 = await snmp_fh.subtree(options, OID.getPonPortList + '.4')
@@ -40,10 +40,10 @@ async function getBasicPonPortList(options) {
 
         varbinds.forEach((e, idx) => {
             if (e.oid.split('.')[13] == 4) {
-                var objPortIndex = parsePonIndex(parseInt(e.oid.split('.')[14]))
+                const objPortIndex = parsePonIndex(parseInt(e.oid.split('.')[14]))
                 aPon.push({ portIndex: objPortIndex._ponIndex, slot: objPortIndex.slot, pon: objPortIndex.pon, portEnableStatusValue: e.value, portEnableStatus: e.value == 1 ? 'enable' : e.value == 0 ? 'disable' : 'undefined' })
             } else {
-                var index = aPon.findIndex(el => el.portIndex == varbinds[idx].oid.split('.')[14])
+                const index = aPon.findIndex(el => el.portIndex == varbinds[idx].oid.split('.')[14])
                 if (index > -1) {
                     if (e.oid.split('.')[13] == 4) {
                         aPon[index].portEnableStatusValue = e.value
@@ -64,8 +64,8 @@ async function getBasicPonPortList(options) {
 
 async function getPonPortList(options) {
     try {
-        var aPon = []
-        var varbinds = []
+        const aPon = []
+        const varbinds = []
         
         try {
             const varbinds1 = await snmp_fh.subtree(options, OID.getPonPortList + '.1')
@@ -91,10 +91,10 @@ async function getPonPortList(options) {
 
         varbinds.forEach((e, idx) => {
             if (e.oid.split('.')[13] == 1) {
-                var objPortIndex = parsePonIndex(parseInt(e.oid.split('.')[14]))
+                const objPortIndex = parsePonIndex(parseInt(e.oid.split('.')[14]))
                 aPon.push({ portIndex: objPortIndex._ponIndex, slot: objPortIndex.slot, pon: objPortIndex.pon, portTypeValue: e.value, portType: tables.portTypeCode[e.value] })
             } else {
-                var index = aPon.findIndex(el => el.portIndex == varbinds[idx].oid.split('.')[14])
+                const index = aPon.findIndex(el => el.portIndex == varbinds[idx].oid.split('.')[14])
                 if (index > -1) {
                     if (e.oid.split('.')[13] == 2)
                         aPon[index].portName = e.value.toString()
@@ -126,7 +126,7 @@ async function getPonPortList(options) {
 
 async function getOltInformation(options) {
     try {
-        var olt = {}
+        const olt = {}
         let varbindsBasic
         try {
             varbindsBasic = await snmp_fh.subtree(options, OID.getOltBasicInformation)
@@ -197,15 +197,15 @@ async function getPonPort(options, slot, pon) {
     try {
         const isValid = await gFunc.isValid(options, slot, pon)
         if (isValid && slot && pon) {
-            var ponPort = null
+            let ponPort = null
             const portIndex = convertToOnuIndex(slot, pon, 0)
-            var oid = OID.getPonPortList
+            const oid = OID.getPonPortList
             
             try {
                 const data = await snmp_fh.get(options, [oid + '.1.' + portIndex, oid + '.2.' + portIndex, oid + '.3.' + portIndex, oid + '.4.' + portIndex, oid + '.5.' + portIndex, oid + '.6.' + portIndex, oid + '.12.' + portIndex, oid + '.13.' + portIndex,])
                 data.forEach((e, idx) => {
                     if (e.oid.split('.')[13] == 1) {
-                        var objPortIndex = parsePonIndex(parseInt(e.oid.split('.')[14]))
+                        const objPortIndex = parsePonIndex(parseInt(e.oid.split('.')[14]))
                         ponPort = { portIndex: objPortIndex._ponIndex, slot: objPortIndex.slot, pon: objPortIndex.pon, portTypeValue: e.value, portType: tables.portTypeCode[e.value] }
                     } else if (e.oid.split('.')[13] == 2)
                         ponPort.portName = e.value.toString()
@@ -240,7 +240,7 @@ async function getPonPort(options, slot, pon) {
 
 async function getSubrackInformation(options) {
     try {
-        var obj = {}
+        const obj = {}
         try {
             const varbinds = await snmp_fh.subtree(options, OID.getSubtrackInformation)
             varbinds.forEach(e => {

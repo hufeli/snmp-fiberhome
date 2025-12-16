@@ -60,27 +60,27 @@ function timeNow() {
 }
 
 function diffTime(timeStart, timeEnd) {
-    var date1 = new Date(2000, 0, 1, timeStart.split(':')[0], timeStart.split(':')[1], timeStart.split(':')[2], timeStart.split(':')[3])
-    var date2 = new Date(2000, 0, 1, timeEnd.split(':')[0], timeEnd.split(':')[1], timeEnd.split(':')[2], timeEnd.split(':')[3])
+    const date1 = new Date(2000, 0, 1, timeStart.split(':')[0], timeStart.split(':')[1], timeStart.split(':')[2], timeStart.split(':')[3])
+    const date2 = new Date(2000, 0, 1, timeEnd.split(':')[0], timeEnd.split(':')[1], timeEnd.split(':')[2], timeEnd.split(':')[3])
 
     if (date2 < date1)
         date2.setDate(date2.getDate() + 1)
 
-    var msec = date2 - date1
-    var hh = Math.floor(msec / 1000 / 60 / 60)
+    let msec = date2 - date1
+    const hh = Math.floor(msec / 1000 / 60 / 60)
     msec -= hh * 1000 * 60 * 60
-    var mm = Math.floor(msec / 1000 / 60)
+    const mm = Math.floor(msec / 1000 / 60)
     msec -= mm * 1000 * 60
-    var ss = Math.floor(msec / 1000)
+    const ss = Math.floor(msec / 1000)
     msec -= ss * 1000
 
     return hh.toString().padStart(2, 0) + ':' + mm.toString().padStart(2, 0) + ':' + ss.toString().padStart(2, 0) + '.' + msec.toString().padStart(3, 0)
 }
 
 function hexToDec(hexString) {   // Converter negativo/positivo hex para decimal
-    hexString = ((hexString.charAt(1) != 'X' && hexString.charAt(1) != 'x') ? hexString = '0X' + hexString : hexString);
-    hexString = (hexString.charAt(2) < 8 ? hexString = hexString - 0x00000000 : hexString = hexString - 0xFFFFFFFF - 1);
-    return parseInt(hexString, 10);
+    let result = ((hexString.charAt(1) != 'X' && hexString.charAt(1) != 'x') ? '0X' + hexString : hexString);
+    result = (result.charAt(2) < 8 ? result - 0x00000000 : result - 0xFFFFFFFF - 1);
+    return parseInt(result, 10);
 }
 /*
  * Get Key name of object with value

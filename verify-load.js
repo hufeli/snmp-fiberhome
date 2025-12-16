@@ -7,8 +7,8 @@ async function run() {
         console.log('Calling getBasicPonPortList...');
         // This is expected to fail because of missing options/network
         const result = await fh.getBasicPonPortList({
-             ip: '127.0.0.1',
-             community: 'public',
+             ip: '10.0.14.2',
+             community: 'adsl',
              version: 1
         }); 
         console.log('Result:', result);
