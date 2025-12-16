@@ -1,6 +1,6 @@
 module.exports = {
     options: {
-        ip: '127.0.0.1',
+        ip: '192.0.0.1',
         community: 'public',
         port: 161,
         retries: 1,
@@ -9,8 +9,8 @@ module.exports = {
     },
     onu: {
         slot: 1,
-        pon: 1,
-        onuId: 1,
-        macAddress: '00:00:00:00:00:00'
+        pon: 2,
+        onuId: 14,
+        macAddress: '14:36:0E:60:93:13'
     }
 }
