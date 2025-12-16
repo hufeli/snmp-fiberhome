@@ -24,7 +24,7 @@ async function isValid(options, slot, pon, onuId, ignore) {
                 throw err
             }
         } else if (slot && pon && !onuId) { // only slot and pon
-            var ponIndex = ((slot) * 2 ** 25) + ((pon) * 2 ** 19)
+            const ponIndex = ((slot) * 2 ** 25) + ((pon) * 2 ** 19)
             try {
                 const ret = await snmp_fh.get(options, [OID.getPortName + '.' + ponIndex])
                 if (ret[0].type == 4)
@@ -37,7 +37,7 @@ async function isValid(options, slot, pon, onuId, ignore) {
                 throw err
             }
         } else if (slot && pon && onuId) {  // all
-            var ponIndex = ((slot) * 2 ** 25) + ((pon) * 2 ** 19) + ((onuId) * 2 ** 8)
+            const ponIndex = ((slot) * 2 ** 25) + ((pon) * 2 ** 19) + ((onuId) * 2 ** 8)
             try {
                 const ret = await snmp_fh.get(options, [OID.getOnuStatus + '.' + ponIndex])
                 if (ret[0].value == 1 || ret[0].value == 3)

@@ -96,7 +96,7 @@ function createPackage(objSNMP, requestId = 6189) {
         packageSize += 1
 
     packageSize += /*Value:*/ /*type:*/1 + /*0x8? e TAM_value_bytes:*/2
-    requestIdHex = requestId.toHex(4)
+    let requestIdHex = requestId.toHex(4)
 
     /* Tamanho total do pacote */
     packageSize +=  /*requiredId: type | size | bytes */1 + 1 + (parseInt(requestIdHex.split('').length) / 2) + /*erro + erro_index*/6
@@ -107,7 +107,7 @@ function createPackage(objSNMP, requestId = 6189) {
 
     // Head PDU 
     packageSize += /*pdu:*//*type:*/1 + /*0x8? e TAM_value_bytes:*/2
-    packageSize += /*version:*/3 + /*community: type | size | bytes */1 + 1 + (parseInt(objSNMP.community.strToHex().replaceAll(' ', '').split('').length) / 2)
+    packageSize += /*version:*/3 + /*community: type | size | bytes */1 + 1 + (parseInt(objSNMP.community.strToHex().replaceAll(' ', '').split('').length, 10) / 2)
     objSNMP.size = packageSize
 
     if (objSNMP.size > 255)
