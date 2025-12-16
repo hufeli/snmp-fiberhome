@@ -1,12 +1,12 @@
-var tape = require('tape')
-var _test = require('tape-promise').default
-var test = _test(tape)
+const tape = require('tape')
+const _test = require('tape-promise').default
+const test = _test(tape)
 
 const fh = require('../snmp-fiberhome')
 const env = require('./env')
 
-var numRand1 = Math.floor(Math.random() * 2000) + 256
-var numRand2 = Math.floor(Math.random() * 2000) + 256
+const numRand1 = Math.floor(Math.random() * 2000) + 256
+const numRand2 = Math.floor(Math.random() * 2000) + 256
 
 // Deletando perfis WAN e desautorizando a ONU
 test('Preparando ambiente:', async (t) => {

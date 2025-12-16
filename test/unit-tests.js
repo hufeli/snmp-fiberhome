@@ -1,11 +1,11 @@
-var tape = require('tape')
-var _test = require('tape-promise').default
-var test = _test(tape)
+const tape = require('tape')
+const _test = require('tape-promise').default
+const test = _test(tape)
 
 const fh = require('../snmp-fiberhome')
 const env = require('./env')
 
-var numRand1 = Math.floor(Math.random() * 2000) + 256
+const numRand1 = Math.floor(Math.random() * 2000) + 256
 
 // ONU deve estar autorizada na OLT para realizar os teste a seguir:
 

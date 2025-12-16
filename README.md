@@ -602,7 +602,7 @@ convertToOnuIndex(slot: <number>, pon: <number>, onuId: <number>) => <number>
 Example:
 
 ```js
-var onuIndex = fh.convertToOnuIndex(11, 1, 1)
+const onuIndex = fh.convertToOnuIndex(11, 1, 1)
 console.log(onuIndex)
 ```
 

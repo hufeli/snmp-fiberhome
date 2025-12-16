@@ -224,7 +224,7 @@ async function delOnuByMacAddress(options, macAddress) {
 }
 
 async function delWan(options, slot, pon, onuId) {
-    var delWan = snmp_fh.setWanHeader
+    let delWan = snmp_fh.setWanHeader
     delWan = delWan.split(' ')
     // Tamanho do pacote
     delWan[70] = '00'
@@ -239,7 +239,7 @@ async function delWan(options, slot, pon, onuId) {
     delWan[181] = '00'                      // Quantidade de Wans
     delWan = delWan.join(' ')
 
-    var confirmDelWan = delWan.slice(0, -6)
+    let confirmDelWan = delWan.slice(0, -6)
     confirmDelWan = confirmDelWan.split(' ')
     confirmDelWan[59] = '00'
     confirmDelWan[70] = '00'
@@ -261,7 +261,7 @@ async function delWan(options, slot, pon, onuId) {
 async function getAuthorizedOnus(options) {
     try {
         const serialList = await getMacAddressList(options)
-        var onuList = []
+        const onuList = []
         serialList.map(onu => {
             onuList.push({ ...onu, ...parseOnuIndex(onu._onuIndex) })
         })
@@ -512,7 +512,7 @@ async function getOnuDistance(options, slot, pon, onuId, ignoreValid) {
         await new Promise(resolve => setTimeout(resolve, queueTime))
         const isValid = await gFunc.isValid(options, slot, pon, onuId, ignoreValid).catch(() => false)
         if (isValid && slot && pon && onuId) {
-            var bgmp = snmp_fh.getDistance
+            let bgmp = snmp_fh.getDistance
             bgmp = bgmp.split(' ')
             bgmp[156] = slot.toHex(2)
             bgmp[158] = pon.toHex(2)
@@ -520,18 +520,18 @@ async function getOnuDistance(options, slot, pon, onuId, ignoreValid) {
             bgmp = bgmp.join(' ')
 
             const ret = await snmp_fh.sendSnmp(OID.getOnuDistance, bgmp, options, true)
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < ret.length; i += 2)
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < ret.length; i += 2)
                 hex += ret.substring(i, i + 2) + ' '
             hex = hex.trim()
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 03 01 01 07 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 03 01 01 07 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
             else
                 value = value.splice(4)
 
-            var obj = {
+            const obj = {
                 _onuIndex: convertToOnuIndex(slot, pon, onuId),
                 value: (hexToInt(value.slice(-2).join('')) / 1000).toFixed(3),
                 unit: 'km'
@@ -549,7 +549,7 @@ async function getOnuLastOffTime(options, slot, pon, onuId, ignoreValid) {
         await new Promise(resolve => setTimeout(resolve, queueTime))
         const isValid = await gFunc.isValid(options, slot, pon, onuId, ignoreValid).catch(() => false)
         if (isValid && slot && pon && onuId) {
-            var bgmp = snmp_fh.lastOffTime
+            let bgmp = snmp_fh.lastOffTime
             bgmp = bgmp.split(' ')
             bgmp[159] = '01'
             bgmp[161] = slot.toHex(2)
@@ -557,25 +557,25 @@ async function getOnuLastOffTime(options, slot, pon, onuId, ignoreValid) {
             bgmp[165] = onuId.toHex(2)
             bgmp = bgmp.join(' ')
             const ret = await snmp_fh.sendSnmp(OID.getOnuLastOffTime, bgmp, options, true)
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < ret.length; i += 2)
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < ret.length; i += 2)
                 hex += ret.substring(i, i + 2) + ' '
             hex = hex.trim()
 
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 03 01 01 1c 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 03 01 01 1c 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
             else
                 value = value.splice(4)
 
-            var year = hexToInt(value.slice(184, 186).join('')).toString().padStart(4, '0')
-            var mouth = hexToInt(value.slice(186, 187).join('')).toString().padStart(2, '0')
-            var day = hexToInt(value.slice(187, 188).join('')).toString().padStart(2, '0')
-            var hours = hexToInt(value.slice(188, 189).join('')).toString().padStart(2, '0')
-            var minutes = hexToInt(value.slice(189, 190).join('')).toString().padStart(2, '0')
-            var seconds = hexToInt(value.slice(190, 191).join('')).toString().padStart(2, '0')
-            var obj = {
+            const year = hexToInt(value.slice(184, 186).join('')).toString().padStart(4, '0')
+            const mouth = hexToInt(value.slice(186, 187).join('')).toString().padStart(2, '0')
+            const day = hexToInt(value.slice(187, 188).join('')).toString().padStart(2, '0')
+            const hours = hexToInt(value.slice(188, 189).join('')).toString().padStart(2, '0')
+            const minutes = hexToInt(value.slice(189, 190).join('')).toString().padStart(2, '0')
+            const seconds = hexToInt(value.slice(190, 191).join('')).toString().padStart(2, '0')
+            const obj = {
                 _onuIndex: convertToOnuIndex(slot, pon, onuId),
                 date: `${year}-${mouth}-${day}`,
                 time: `${hours}:${minutes}:${seconds}`
@@ -602,19 +602,19 @@ async function getOnuOpticalPower(options, slot, pon, onuId, ignore, ignoreValid
             bgmp[161] = onuId.toHex(2)  // ONU NUMBER / ONU Authorized No.  
             bgmp = bgmp.join(' ')
             const ret = await snmp_fh.sendSnmp(OID.getOnuOpticalPower, bgmp, options, true)
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < ret.length; i += 2)
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < ret.length; i += 2)
                 hex += ret.substring(i, i + 2) + ' '
             hex = hex.trim()
 
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 03 01 01 06 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 03 01 01 06 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
             else
                 value = value.splice(4)
 
-            var obj = {
+            const obj = {
                 _onuIndex: convertToOnuIndex(slot, pon, onuId),
                 temperature: {
                     value: (hexToInt(value.slice(174, 176).join('')) / 100).toFixed(2),
@@ -655,11 +655,11 @@ async function getOnuByPonWithOffset(options, slot, pon, offset) {
         await new Promise(resolve => setTimeout(resolve, 30))
         const isValid = await gFunc.isValid(options, slot, pon).catch(() => false)
         if (isValid) {
-            var queue = new Queue(1, 10000)
-            var aOnuOID = []
-            var aResp = []
+            const queue = new Queue(1, 10000)
+            const aOnuOID = []
+            const aResp = []
             
-            for (var onuId = 1 + (offset * 16); onuId <= 16 + (offset * 16); ++onuId)
+            for (let onuId = 1 + (offset * 16); onuId <= 16 + (offset * 16); ++onuId)
                 aOnuOID.push(OID.getOnuMacAddress + '.' + convertToOnuIndex(slot, pon, onuId).toString())
             
             const ret = await snmp_fh.get(options, aOnuOID)
@@ -687,10 +687,10 @@ async function getOnuByPonWithOffset(options, slot, pon, offset) {
 
 async function getOnuListByPon_OLD(options, slot, pon) {
     try {
-        var list = []
-        var queue = new Queue(1, 10)
-        var promises = []
-        for (var offset = 0; offset < 8; ++offset) {
+        const list = []
+        const queue = new Queue(1, 10)
+        const promises = []
+        for (let offset = 0; offset < 8; ++offset) {
             const _offset = offset
             promises.push(queue.add(async () => {
                 const onus = await getOnuByPonWithOffset(options, slot, pon, _offset)
@@ -706,7 +706,7 @@ async function getOnuListByPon_OLD(options, slot, pon) {
 
 async function getOnuListByPon(options, slot, pon) {
     try {
-        var queue = new Queue(1, 1000)
+        const queue = new Queue(1, 1000)
         const portList = await getOnuIdListByPon(options, slot, pon)
         if (portList) {
             const promises = portList.map(onu => 
@@ -725,7 +725,7 @@ async function getOnuListByPon(options, slot, pon) {
 
 async function getBasicOnuListByPon(options, slot, pon) {
     try {
-        var queue = new Queue(1, 1000)
+        const queue = new Queue(1, 1000)
         const portList = await getOnuIdListByPon(options, slot, pon).catch(() => false)
         if (portList === false)
             return false
@@ -745,7 +745,7 @@ async function getBasicOnuListByPon(options, slot, pon) {
 // Versão customizada para a Valenet
 async function getBasicOnuListByPonValenet(options, slot, pon) {
     try {
-        var queue = new Queue(1, 1000)
+        const queue = new Queue(1, 1000)
         const portList = await getOnuIdListByPon(options, slot, pon).catch(() => false)
         if (portList === false)
             return portList
@@ -766,7 +766,7 @@ async function getOnuIdListByPon(options, slot, pon) {
     try {
         const isValid = await gFunc.isValid(options, slot, pon).catch(() => false)
         if (isValid && slot && pon) {
-            var bgmp = snmp_fh.getOnuIdListByPon
+            let bgmp = snmp_fh.getOnuIdListByPon
             bgmp = bgmp.split(' ')
             bgmp[163] = slot.toHex(2)
             bgmp = bgmp.join(' ')
@@ -781,23 +781,23 @@ async function getOnuIdListByPon(options, slot, pon) {
             const portList = await snmp_fh.sendSnmp(OID.getOnuIdListByPon, bgmp, options, true)
             await snmp_fh.sendSnmp(OID.confirmGetOnuIdListByPon, bgmp, options, true)
 
-            var respPortList = []
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < portList.length; i += 2)
+            const respPortList = []
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < portList.length; i += 2)
                 hex += portList.substring(i, i + 2) + ' '
             hex = hex.trim()
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 01 01 01 01 17 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 01 01 01 01 17 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
             else
                 value = value.splice(4)
 
-            var numPorts = parseInt((value[162] + value[163]), 16)
+            const numPorts = parseInt((value[162] + value[163]), 16)
             if (numPorts > 0) {
                 value = value.slice(164)
-                for (var i = 0; i < numPorts; ++i) {
-                    var onuId = parseInt((value[6] + value[7]), 16)
+                for (let i = 0; i < numPorts; ++i) {
+                    const onuId = parseInt((value[6] + value[7]), 16)
                     respPortList.push({ _onuIndex: convertToOnuIndex(slot, pon, onuId), slot, pon, onuId })
                     value = value.slice(44)
                 }
@@ -815,38 +815,38 @@ async function getOnuListBySlot(options, slot) {
     try {
         const isValid = await gFunc.isValid(options, slot).catch(() => false)
         if (isValid && slot) {
-            var oidValue = snmp_fh.getOnuListBySlot
+            let oidValue = snmp_fh.getOnuListBySlot
             oidValue = oidValue.split(' ')
             oidValue[161] = slot.toHex(2)
             oidValue = oidValue.join(' ')
 
             const ret = await snmp_fh.sendSnmp(OID.getOnuListBySlot, oidValue, options, true)
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < ret.length; i += 2)
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < ret.length; i += 2)
                 hex += ret.substring(i, i + 2) + ' '
             hex = hex.trim()
 
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 0d 03 01 01 06 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 0d 03 01 01 06 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
             else
                 value = value.splice(4)
 
-            amount = value[163]
-            var aOnus = []
-            for (var idx = 0; idx < amount; ++idx) {
-                var onuHex = value.slice(164 + (idx * 230), 164 + (idx * 230) + 230)
-                var onu = {}
+            const amount = value[163]
+            const aOnus = []
+            for (let idx = 0; idx < amount; ++idx) {
+                const onuHex = value.slice(164 + (idx * 230), 164 + (idx * 230) + 230)
+                const onu = {}
                 onu.slot = parseInt(onuHex[1], 16)
                 onu.pon = parseInt(onuHex[3], 16)
                 onu.onuId = parseInt(onuHex[5], 16)
                 onu.serial = ''
-                for (var s = 0; s < 12; s++)
+                for (let s = 0; s < 12; s++)
                     onu.serial += onuHex[20 + s] != '00' ? String.fromCharCode(parseInt(onuHex[20 + s], 16)) : ''
 
                 onu.onuTypeModel = ''
-                for (var m = 0; m < 12; m++)
+                for (let m = 0; m < 12; m++)
                     onu.onuTypeModel += String.fromCharCode(parseInt(onuHex[36 + m], 16))
                 onu.onuTypeModel = onu.onuTypeModel.trim()
                 aOnus.push(onu)
@@ -862,7 +862,7 @@ async function getOnuListBySlot(options, slot) {
 async function getOnuIdList(options) {
     try {
         const serialList = await snmp_fh.subtree(options, OID.getOnuIdList)
-        var list = []
+        const list = []
         serialList.forEach(e => {
             list.push({ _onuIndex: parseInt(e.oid.split(OID.getOnuIdList + '.')[1]), onuId: e.value })
         })
@@ -874,7 +874,7 @@ async function getOnuIdList(options) {
 
 async function getOnuIndexList(options) {
     try {
-        var aONUs = []
+        const aONUs = []
         try {
             const varbinds = await snmp_fh.subtree(options, OID.getOnuIndexList)
             varbinds.forEach(onu => {
@@ -894,30 +894,30 @@ async function getOnuRxPowerListByPon(options, slot, pon, ignoreValid) {
     try {
         const isValid = await gFunc.isValid(options, slot, pon, ignoreValid).catch(() => false)
         if (isValid && slot && pon) {
-            var bgmp = snmp_fh.getOnuRxPowerListByPon
+            let bgmp = snmp_fh.getOnuRxPowerListByPon
             bgmp = bgmp.split(' ')
             bgmp[157] = slot.toHex(2)
             bgmp[159] = pon.toHex(2)
             bgmp = bgmp.join(' ')
             const ret = await snmp_fh.sendSnmp(OID.getOnuRxPowerListByPon, bgmp, options, true)
             await snmp_fh.sendSnmp(OID.confirmGetOnuRxPowerListByPon, bgmp, options, true)
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < ret.length; i += 2)
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < ret.length; i += 2)
                 hex += ret.substring(i, i + 2) + ' '
             hex = hex.trim()
 
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 15 03 01 01 04 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 15 03 01 01 04 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
             else
                 value = value.splice(4)
 
-            var numOnus = parseInt((value[230] + value[231]), 16)
+            const numOnus = parseInt((value[230] + value[231]), 16)
             value = value.slice(232)
-            var list = []
-            for (var i = 0; i < numOnus; ++i) {
-                var obj = {}
+            const list = []
+            for (let i = 0; i < numOnus; ++i) {
+                const obj = {}
 
                 obj.onuId = parseInt((value[0] + value[1]), 16)
                 obj._onuIndex = convertToOnuIndex(slot, pon, obj.onuId)
@@ -931,7 +931,7 @@ async function getOnuRxPowerListByPon(options, slot, pon, ignoreValid) {
 
             const onuList = await getOnuIdListByPon(options, slot, pon)
             onuList.map(e => {
-                var idx = list.findIndex(o => o.onuId == e.onuId)
+                const idx = list.findIndex(o => o.onuId == e.onuId)
                 if (idx > -1) {
                     e.rxPower = list[idx].rxPower
                 } else {
@@ -948,14 +948,13 @@ async function getOnuRxPowerListByPon(options, slot, pon, ignoreValid) {
 
 async function getOnuOpticalPowerList(options) {
     try {
-        var aOpticalPower = []
-        var queue = new Queue(1, 10000)
+        const queue = new Queue(1, 10000)
         const aONUs = await getOnuIndexList(options)
         if (aONUs === false)
             return false
         
         const promises = aONUs.map(onuIndex => {
-            var onu = parseOnuIndex(onuIndex)
+            const onu = parseOnuIndex(onuIndex)
             return queue.add(async () => {
                 const onuOpticalPower = await getOnuOpticalPower(options, onu.slot, onu.pon, onu.onuId)
                 return { _onuIndex: onuIndex, ...onu, opticalPower: onuOpticalPower }
@@ -969,7 +968,7 @@ async function getOnuOpticalPowerList(options) {
 
 async function getOnuType(options, slot, pon, onuId) {
     try {
-        var onuIndex = convertToOnuIndex(slot, pon, onuId)
+        const onuIndex = convertToOnuIndex(slot, pon, onuId)
         const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
         if (isValid && onuIndex) {
             const data = await snmp_fh.get(options, [OID.getOnuType + '.' + onuIndex])
@@ -992,12 +991,12 @@ async function getOnuUplinkInterface(options, slot, pon, onuId, ignore, ignoreVa
             return null
         const isValid = await gFunc.isValid(options, slot, pon, onuId, ignoreValid).catch(() => false)
         if (isValid && slot && pon && onuId) {
-            var oids = [OID.onuGetUplinkInterfacePortName, OID.onuGetUplinkInterfacePortDescription, OID.onuGetUplinkInterfacePortType, OID.onuGetUplinkInterfacePortStatus, OID.onuGetUplinkInterfaceDownlinkRate, OID.onuGetUplinkInterfaceUplinkRate]
-            var onuIndex = convertToOnuIndex(slot, pon, onuId)
+            let oids = [OID.onuGetUplinkInterfacePortName, OID.onuGetUplinkInterfacePortDescription, OID.onuGetUplinkInterfacePortType, OID.onuGetUplinkInterfacePortStatus, OID.onuGetUplinkInterfaceDownlinkRate, OID.onuGetUplinkInterfaceUplinkRate]
+            const onuIndex = convertToOnuIndex(slot, pon, onuId)
             oids = oids.map(oid => oid + '.' + onuIndex)
 
             const data = await snmp_fh.get(options, oids)
-            var obj = { downlinkRateUnit: 'Mbit/s', uplinkRateUnit: 'Mbit/s' }
+            const obj = { downlinkRateUnit: 'Mbit/s', uplinkRateUnit: 'Mbit/s' }
             data.forEach((o, idx) => {
                 if (o.oid.split('.')[13] == 1)
                     obj.portType = o.value
@@ -1017,6 +1016,7 @@ async function getOnuUplinkInterface(options, slot, pon, onuId, ignore, ignoreVa
         } else return false
     } catch (err) {
         throw err
+
     }
 }
 
@@ -1024,37 +1024,37 @@ async function getOnuWebAdmin(options, slot, pon, onuId) {
     try {
         const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
         if (isValid && slot && pon && onuId) {
-            var oidValue = snmp_fh.getOnuWebAdmin
+            let oidValue = snmp_fh.getOnuWebAdmin
             oidValue = oidValue.split(' ')
             oidValue[161] = slot.toHex(2)
             oidValue[163] = pon.toHex(2)
             oidValue[165] = onuId.toHex(2)
             oidValue = oidValue.join(' ')
             const ret = await snmp_fh.sendSnmp(OID.getOnuWebAdmin, oidValue, options, true)
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < ret.length; i += 2)
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < ret.length; i += 2)
                 hex += ret.substring(i, i + 2) + ' '
             hex = hex.trim()
 
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 01 01 01 25 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 16 01 01 01 25 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
             else
                 value = value.splice(4)
 
-            var amount = value[191]
-            var aProfiles = []
-            for (var idx = 0; idx < amount; ++idx) {
-                var onuHex = value.slice(192 + (idx * 84), 192 + (idx * 84) + 84)
-                var onu = {}
+            const amount = value[191]
+            const aProfiles = []
+            for (let idx = 0; idx < amount; ++idx) {
+                const onuHex = value.slice(192 + (idx * 84), 192 + (idx * 84) + 84)
+                const onu = {}
 
                 onu.webUsername = ''
-                for (var s = 0; s < 16; s++)
+                for (let s = 0; s < 16; s++)
                     onu.webUsername += onuHex[0 + s] != '00' ? String.fromCharCode(parseInt(onuHex[0 + s], 16)) : ''
 
                 onu.webPassword = ''
-                for (var s = 0; s < 16; s++)
+                for (let s = 0; s < 16; s++)
                     onu.webPassword += onuHex[16 + s] != '00' ? String.fromCharCode(parseInt(onuHex[16 + s], 16)) : ''
 
                 onu.group = onuHex[51] == '01' ? 'common' : onuHex[51] == '02' ? 'admin' : 'undefined'
@@ -1078,25 +1078,25 @@ async function getRxPowerListByPon(options, slot, pon) {
     try {
         const isValid = await gFunc.isValid(options, slot, pon).catch(() => false)
         if (isValid && slot && pon) {
-            var bgmp = snmp_fh.allOpticalPower
+            let bgmp = snmp_fh.allOpticalPower
             bgmp = bgmp.split(' ')
             bgmp[157] = slot.toHex(2)
             bgmp[159] = pon.toHex(2)
             bgmp = bgmp.join(' ')
             const ret = await snmp_fh.sendSnmp(OID.getRxPowerListByPon, bgmp, options, true)
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < ret.length; i += 2)
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < ret.length; i += 2)
                 hex += ret.substring(i, i + 2) + ' '
             hex = hex.trim()
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 15 03 01 01 04 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 15 03 01 01 04 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
             else
                 value = value.splice(4)
 
-            var pos = 233
-            var aOnus = []
+            let pos = 233
+            const aOnus = []
             while (value[pos] != '00' && pos < value.length) {
                 aOnus.push({ _onuIndex: convertToOnuIndex(slot, pon, parseInt(value[pos])), slot, pon, onuId: parseInt(value[pos], 16), opticalRxPower: (hexToInt(value.slice(pos + 3, pos + 7).join('')) / 100).toFixed(2), opticalRxPowerUnit: 'dBm' })
                 pos += 8
@@ -1114,11 +1114,12 @@ async function getRxPowerListByPon(options, slot, pon) {
 async function getMacAddressList(options) {
     try {
         const serialList = await snmp_fh.subtree(options, OID.getSerials)
-        var list = []
+        const list = []
         serialList.forEach(e => {
             list.push({ _onuIndex: parseInt(e.oid.split(OID.getSerials + '.')[1]), macAddress: e.value.toString() })
         })
         return list
+
     } catch (error) {
         console.error('Error: Unable to connect to OLT')
         return false
@@ -1139,7 +1140,7 @@ async function getWan(options, slot, pon, onuId) {
     try {
         const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
         if (isValid && slot && pon && onuId) {
-            var getWan = snmp_fh.setWanHeader.slice(0, -6)
+            let getWan = snmp_fh.setWanHeader.slice(0, -6)
             getWan = getWan.split(' ')
             // Tamanho do pacote
             getWan[59] = '00'
@@ -1156,28 +1157,28 @@ async function getWan(options, slot, pon, onuId) {
             const ret = await snmp_fh.sendSnmp(OID.setWan, getWan, options, true)
             await snmp_fh.sendSnmp(OID.confirmSetWan, getWan, options, true)
             
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < ret.length; i += 2)
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < ret.length; i += 2)
                 hex += ret.substring(i, i + 2) + ' '
             hex = hex.trim()
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 08 01 01 01 0d 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 08 01 01 01 0d 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
             else
                 value = value.splice(4)
 
-            var numProfiles = parseInt(value[185], 16)
-            var aWans = []
+            const numProfiles = parseInt(value[185], 16)
+            const aWans = []
             if (numProfiles == 0)           // quantidade de perfis WAN
                 return []
             else {
                 value = value.slice(186)    // eliminando somente o header
-                for (var wanProfile = 0; wanProfile < numProfiles; ++wanProfile) {
-                    var objWan = {}
+                for (let wanProfile = 0; wanProfile < numProfiles; ++wanProfile) {
+                    const objWan = {}
                     objWan._wanIndex = parseInt(value[1], 16)
                     objWan.wanName = ''
-                    for (var i = 0; i < 64; ++i)
+                    for (let i = 0; i < 64; ++i)
                         if (value[2 + i] == '00')
                             objWan.wanName += ""
                         else
@@ -1197,16 +1198,16 @@ async function getWan(options, slot, pon, onuId) {
                     if (value[84] == '00')
                         objWan.wanMask = '0.0.0.0'
                     else {
-                        var maskInt = parseInt(value[84], 16)
-                        var maskOne = Array(maskInt).fill('1')
+                        const maskInt = parseInt(value[84], 16)
+                        let maskOne = Array(maskInt).fill('1')
                         maskOne = maskOne.join(',')
                         maskOne = maskOne.replaceAll(',', '')
 
-                        var maskZeros = Array(32 - maskInt).fill('0')
+                        let maskZeros = Array(32 - maskInt).fill('0')
                         maskZeros = maskZeros.join(',')
                         maskZeros = maskZeros.replaceAll(',', '')
 
-                        var mask = maskOne + maskZeros
+                        const mask = maskOne + maskZeros
                         objWan.wanMask = `${parseInt(mask.slice(0, 8), 2)}.${parseInt(mask.slice(8, 16), 2)}.${parseInt(mask.slice(16, 24), 2)}.${parseInt(mask.slice(24, 32), 2)}`
 
                     }
@@ -1217,7 +1218,7 @@ async function getWan(options, slot, pon, onuId) {
                     objWan.pppoeProxy = value[283] == '01' ? true : false
 
                     objWan.pppoeUsername = ''
-                    for (var i = 0; i < 32; ++i)
+                    for (let i = 0; i < 32; ++i)
                         if (value[98 + i] == '00')
                             objWan.pppoeUsername += ""
                         else
@@ -1225,7 +1226,7 @@ async function getWan(options, slot, pon, onuId) {
                     objWan.pppoeUsername = objWan.pppoeUsername.trim()
 
                     objWan.pppoePassword = ''
-                    for (var i = 0; i < 32; ++i)
+                    for (let i = 0; i < 32; ++i)
                         if (value[130 + i] == '00')
                             objWan.pppoeUsername += ""
                         else
@@ -1233,7 +1234,7 @@ async function getWan(options, slot, pon, onuId) {
                     objWan.pppoePassword = objWan.pppoePassword.trim()
 
                     objWan.pppoeName = ''
-                    for (var i = 0; i < 32; ++i)
+                    for (let i = 0; i < 32; ++i)
                         if (value[162 + i] == '00')
                             objWan.pppoeUsername += ""
                         else
@@ -1244,7 +1245,7 @@ async function getWan(options, slot, pon, onuId) {
                     objWan.wanQoS = value[196] == '01' ? true : value[196] == '00' ? false : 'other_' + value[196]
 
                     objWan.lan = {}
-                    var lans = (parseInt(value[197], 16)).toString(2).padStart(4, '0')
+                    let lans = (parseInt(value[197], 16)).toString(2).padStart(4, '0')
                     lans = lans.split('')
                     objWan.lan.lan1 = lans[0] == '1' ? true : false
                     objWan.lan.lan2 = lans[1] == '1' ? true : false
@@ -1252,7 +1253,7 @@ async function getWan(options, slot, pon, onuId) {
                     objWan.lan.lan4 = lans[3] == '1' ? true : false
 
                     objWan.ssid = {}
-                    var ssids = (parseInt(value[198], 16)).toString(2).padStart(4, '0')
+                    let ssids = (parseInt(value[198], 16)).toString(2).padStart(4, '0')
                     ssids = ssids.split('')
                     objWan.ssid.ssid1 = ssids[0] == '1' ? true : false
                     objWan.ssid.ssid2 = ssids[1] == '1' ? true : false
@@ -1288,19 +1289,20 @@ async function getWan(options, slot, pon, onuId) {
     }
 }
 
+
 function hexToInt(hex) {
     if (hex.length % 2 != 0)
         hex = "0" + hex
-    var num = parseInt(hex, 16)
-    var maxVal = Math.pow(2, hex.length / 2 * 8)
+    let num = parseInt(hex, 16)
+    const maxVal = Math.pow(2, hex.length / 2 * 8)
     if (num > maxVal / 2 - 1)
         num = num - maxVal
     return num
 }
 
 function parseOnuIndex(onuIndex) {
-    var indexBin = (parseInt(onuIndex)).toString(2)
-    var obj = {
+    const indexBin = (parseInt(onuIndex)).toString(2)
+    const obj = {
         _onuIndex: onuIndex,
         slot: parseInt(indexBin.slice(-33, -25), 2),
         pon: parseInt(indexBin.slice(-25, -19), 2),
@@ -1314,18 +1316,18 @@ async function rebootOnu(options, slot, pon, onuId) {
     try {
         const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
         if (isValid && slot && pon && onuId) {
-            var bgmp = snmp_fh.rebootOnu
+            let bgmp = snmp_fh.rebootOnu
             bgmp = bgmp.split(' ')
             bgmp[157] = slot.toHex(2)
             bgmp[159] = pon.toHex(2)
             bgmp[161] = onuId.toHex(2)
             bgmp = bgmp.join(' ')
             const ret = await snmp_fh.sendSnmp(OID.rebootOnu, bgmp, options, true)
-            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-            for (var i = 0; i < ret.length; i += 2)
+            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+            for (let i = 0; i < ret.length; i += 2)
                 hex += ret.substring(i, i + 2) + ' '
             hex = hex.trim()
-            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 02 01 01 06 01 ')[1]
+            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 06 02 01 01 06 01 ')[1]
             value = value.split(' ')
             if (value[1] == '81')
                 value = value.splice(3)
@@ -1350,7 +1352,7 @@ async function setOnuBandwidth(options, slot, pon, onuId, upBw, downBw) {
             if (downBw < 256) downBw = 256
             if (downBw > 1000000) downBw = 1000000
 
-            var setBW = snmp_fh.setOnuBandwidth
+            let setBW = snmp_fh.setOnuBandwidth
             setBW = setBW.split(' ')
             setBW[161] = slot.toHex(2)
             setBW[163] = pon.toHex(2)
@@ -1375,15 +1377,15 @@ async function setOnuWebAdmin(options, slot, pon, onuId, aWebConfig) {
     try {
         const isValid = await gFunc.isValid(options, slot, pon, onuId).catch(() => false)
         if (isValid && slot && pon && onuId) {
-            var oidValue = ''
+            let oidValue = ''
             aWebConfig.forEach(webConfig => {
-                var bodySetOnuWebAdmin = snmp_fh.bodySetOnuWebAdmin
+                let bodySetOnuWebAdmin = snmp_fh.bodySetOnuWebAdmin
                 bodySetOnuWebAdmin = bodySetOnuWebAdmin.split(' ')
 
-                for (var idx = 0; idx < 16 && webConfig.username.split('')[idx]; ++idx)
+                for (let idx = 0; idx < 16 && webConfig.username.split('')[idx]; ++idx)
                     bodySetOnuWebAdmin[idx] = (webConfig.username).charCodeAt(idx).toString(16)
 
-                for (var idx = 0; idx < 16 && webConfig.password.split('')[idx]; ++idx)
+                for (let idx = 0; idx < 16 && webConfig.password.split('')[idx]; ++idx)
                     bodySetOnuWebAdmin[idx + 16] = (webConfig.password).charCodeAt(idx).toString(16)
 
                 bodySetOnuWebAdmin[51] = webConfig.group == 'admin' || webConfig.group == 2 ? '02' : '01'
@@ -1391,7 +1393,7 @@ async function setOnuWebAdmin(options, slot, pon, onuId, aWebConfig) {
             })
             oidValue = oidValue.trim()
 
-            var headerSetOnuWebAdmin = snmp_fh.headerSetOnuWebAdmin
+            let headerSetOnuWebAdmin = snmp_fh.headerSetOnuWebAdmin
             headerSetOnuWebAdmin = headerSetOnuWebAdmin.split(' ')
 
             headerSetOnuWebAdmin[161] = slot.toHex(2)
@@ -1399,7 +1401,7 @@ async function setOnuWebAdmin(options, slot, pon, onuId, aWebConfig) {
             headerSetOnuWebAdmin[165] = onuId.toHex(2)
             headerSetOnuWebAdmin[187] = aWebConfig.length.toHex(2)
 
-            var packSize = oidValue.split(' ').length + 64
+            const packSize = oidValue.split(' ').length + 64
             headerSetOnuWebAdmin[70] = packSize.toHex(4).slice(0, 2)
             headerSetOnuWebAdmin[71] = packSize.toHex(4).slice(2, 4)
             headerSetOnuWebAdmin[122] = headerSetOnuWebAdmin[70]
@@ -1415,6 +1417,7 @@ async function setOnuWebAdmin(options, slot, pon, onuId, aWebConfig) {
         throw err
     }
 }
+
 
 async function setLanPorts(options, slot, pon, onuId, aLanPorts) {
     try {
@@ -1442,11 +1445,11 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                         if (respLanPorts.length > 0) {
                             // Realizando merge entre os parametros de entrada e os já configurados na ONU 
                             hexTosend = ''
-                            var lanPortsMerged = []
+                            const lanPortsMerged = []
                             respLanPorts.forEach(c => {
                                 c = { ...c, ...c.lanSettings }
                                 delete c.lanSettings
-                                var index = aLanPorts.findIndex(e => e.lanPort == c.lanPort)
+                                const index = aLanPorts.findIndex(e => e.lanPort == c.lanPort)
                                 if (index < 0)
                                     lanPortsMerged.push({ ...c, lanSettingsHex: null, vlansHex: [] })
                                 else if (aLanPorts[index].clear === true)
@@ -1458,11 +1461,11 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                             // Convertendo dados para Hex
                             lanPortsMerged.forEach(lan => {
                                 // Convertendo VLANS para Hex
-                                var regTransparentCvlanId = []
+                                const regTransparentCvlanId = []
                                 if (lan.vlans && lan.vlans.length > 0) {
                                     lan.vlans.forEach((vlan, index) => {
 
-                                        var bodyLan = snmp_fh.bodyLanEPON
+                                        let bodyLan = snmp_fh.bodyLanEPON
                                         bodyLan = bodyLan.split(' ')
 
                                         if (vlan.tag || vlan.transparent) {
@@ -1479,7 +1482,7 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                                         if (vlan.serviceType && vlan.serviceType.toLowerCase() == 'multicast')
                                             bodyLan[3] = '01'
 
-                                        var vlanNum = null
+                                        let vlanNum = null
                                         if (vlan.vlanMode && vlan.vlanMode.toLowerCase() == 'tag') {
                                             bodyLan[4] = `01`
                                             if ((vlan.cvlanId < 1 || vlan.cvlanId > 4085) && (options.enableWarnings))
@@ -1533,8 +1536,8 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                                         /* ** QinQ ** */ // DISABLED (BUG)
                                         if (vlan.qInQ && false) {
                                             bodyLan[16] = '01'  // QinQ State
-                                            var vlanId = vlan.qInQ.vlanId
-                                            for (var p = 0; p < 30; ++p) {
+                                            const vlanId = vlan.qInQ.vlanId
+                                            for (let p = 0; p < 30; ++p) {
                                                 if (vlan.qInQ.serviceName.split('')[p])
                                                     bodyLan[33 + p] = (vlan.qInQ.serviceName.split('')[p].charCodeAt(0)).toString(16)
                                                 else
@@ -1584,8 +1587,8 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                                 }
 
                                 // Header LAN port
-                                var headerLan = snmp_fh.headerLanEPON
-                                var headerLength = ((snmp_fh.headerLanEPON.split(' ').length - 2) + (snmp_fh.bodyLanEPON.split(' ').length * lan.vlansHex.length) + snmp_fh.footerLanEPON.split(' ').length).toHex(4)
+                                let headerLan = snmp_fh.headerLanEPON
+                                const headerLength = ((snmp_fh.headerLanEPON.split(' ').length - 2) + (snmp_fh.bodyLanEPON.split(' ').length * lan.vlansHex.length) + snmp_fh.footerLanEPON.split(' ').length).toHex(4)
                                 headerLan = headerLan.split(' ')
                                 headerLan[0] = headerLength.slice(0, 2)                         // Tamanho do sub-pacote 
                                 headerLan[1] = headerLength.slice(2, 4)
@@ -1601,7 +1604,7 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                                     headerLan[8] = '01'
 
                                     // CIR
-                                    var policingCir = 0
+                                    let policingCir = 0
                                     if (lan.policing.cir) {           // 0 - 100000
                                         if (lan.policing.cir < 0)
                                             policingCir = 0
@@ -1615,7 +1618,7 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                                     headerLan[12] = policingCir.toHex(6).slice(4, 6)
 
                                     // CBS
-                                    var policingCbs = 0
+                                    let policingCbs = 0
                                     if (lan.policing.cbs) {           // 0 - 4294967294
                                         if (lan.policing.cbs < 0)
                                             policingCbs = 0
@@ -1630,7 +1633,7 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                                     headerLan[16] = policingCbs.toHex(8).slice(6, 8)
 
                                     // EBS
-                                    var policingEbs = 0
+                                    let policingEbs = 0
                                     if (lan.policing.ebs) {           // 0 - 4294967294
                                         if (lan.policing.ebs < 0)
                                             policingEbs = 0
@@ -1650,7 +1653,7 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                                     headerLan[21] = '01'
 
                                     // CIR
-                                    var dsPolicingCir = 0
+                                    let dsPolicingCir = 0
                                     if (lan.dsPolicing.cir) {           // 0 - 16777215
                                         if (lan.dsPolicing.cir < 0)
                                             dsPolicingCir = 0
@@ -1664,7 +1667,7 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                                     headerLan[25] = dsPolicingCir.toHex(6).slice(4, 6)
 
                                     // PIR
-                                    var dsPolicingPir = 0
+                                    let dsPolicingPir = 0
                                     if (lan.dsPolicing.pir) {           // 0 - 16777215
                                         if (lan.dsPolicing.pir < 0)
                                             dsPolicingPir = 0
@@ -1688,24 +1691,24 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                                 })
 
                                 // footer
-                                var footerLan = snmp_fh.footerLanEPON
+                                let footerLan = snmp_fh.footerLanEPON
                                 footerLan = footerLan.split(' ')
 
-                                var igmpUpCvlanId = lan.igmpUpCvlan.id ? lan.igmpUpCvlan.id : 65535   // 65535 == 'ffff'
+                                const igmpUpCvlanId = lan.igmpUpCvlan.id ? lan.igmpUpCvlan.id : 65535   // 65535 == 'ffff'
                                 footerLan[2] = igmpUpCvlanId.toHex(4).slice(0, 2)
                                 footerLan[3] = igmpUpCvlanId.toHex(4).slice(2, 4)
                                 footerLan[4] = lan.igmpUpCvlan.cos || lan.igmpUpCvlan.cos === 0 ? lan.igmpUpCvlan.cos.toHex(2) : 'ff'
 
-                                var igmpUpCvlanTpId = lan.igmpUpCvlan.tpId ? lan.igmpUpCvlan.tpId : 33024
+                                const igmpUpCvlanTpId = lan.igmpUpCvlan.tpId ? lan.igmpUpCvlan.tpId : 33024
                                 footerLan[5] = igmpUpCvlanTpId.toHex(4).slice(0, 2)
                                 footerLan[6] = igmpUpCvlanTpId.toHex(4).slice(2, 4)
 
-                                var igmpUpSvlanId = lan.igmpUpSvlan.id ? lan.igmpUpSvlan.id : 65535   // 65535 == 'ffff'
+                                const igmpUpSvlanId = lan.igmpUpSvlan.id ? lan.igmpUpSvlan.id : 65535   // 65535 == 'ffff'
                                 footerLan[7] = igmpUpSvlanId.toHex(4).slice(0, 2)
                                 footerLan[8] = igmpUpSvlanId.toHex(4).slice(2, 4)
                                 footerLan[9] = lan.igmpUpSvlan.cos || lan.igmpUpSvlan.cos === 0 ? lan.igmpUpSvlan.cos.toHex(2) : 'ff'
 
-                                var igmpUpSvlanTpId = lan.igmpUpSvlan.tpId ? lan.igmpUpSvlan.tpId : 33024
+                                const igmpUpSvlanTpId = lan.igmpUpSvlan.tpId ? lan.igmpUpSvlan.tpId : 33024
                                 footerLan[10] = igmpUpSvlanTpId.toHex(4).slice(0, 2)
                                 footerLan[11] = igmpUpSvlanTpId.toHex(4).slice(2, 4)
 
@@ -1716,9 +1719,9 @@ async function setLanPortsEPON(options, slot, pon, onuId, aLanPorts) {
                             hexTosend = hexTosend.trim()
 
                             // Header package
-                            var headerLanPorts = snmp_fh.headerLanPorts
+                            let headerLanPorts = snmp_fh.headerLanPorts
                             headerLanPorts = headerLanPorts.split(' ')
-                            var packSize = hexTosend.split(' ').length + 39             // 39 = trecho que vai do tamanho do pacote (posições [122] e [123]) em headerLanPorts até o final
+                            const packSize = hexTosend.split(' ').length + 39             // 39 = trecho que vai do tamanho do pacote (posições [122] e [123]) em headerLanPorts até o final
                             headerLanPorts[70] = packSize.toHex(4).slice(0, 2)          // Tamanho do sub-pacote
                             headerLanPorts[71] = packSize.toHex(4).slice(2, 4)          // Tamanho do sub-pacote
                             headerLanPorts[122] = headerLanPorts[70]
@@ -1754,11 +1757,11 @@ async function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
                         if (respLanPorts.length > 0) {
                             // Realizando merge entre os parametros de entrada e os já configurados na ONU 
                             hexTosend = ''
-                            var lanPortsMerged = []
+                            const lanPortsMerged = []
                             respLanPorts.forEach(c => {
                                 c = { ...c, ...c.lanSettings }
                                 delete c.lanSettings
-                                var index = aLanPorts.findIndex(e => e.lanPort == c.lanPort)
+                                const index = aLanPorts.findIndex(e => e.lanPort == c.lanPort)
                                 if (index < 0)
                                     lanPortsMerged.push({ ...c, lanSettingsHex: null, vlansHex: [] })
                                 else if (aLanPorts[index].clear === true)
@@ -1770,11 +1773,11 @@ async function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
                             // Convertendo dados para Hex
                             lanPortsMerged.forEach(lan => {
                                 // Convertendo VLANS para Hex
-                                var regTransparentCvlanId = []
+                                const regTransparentCvlanId = []
                                 if (lan.vlans && lan.vlans.length > 0) {
                                     lan.vlans.forEach((vlan, index) => {
 
-                                        var bodyLan = snmp_fh.bodyLan
+                                        let bodyLan = snmp_fh.bodyLan
                                         bodyLan = bodyLan.split(' ')
 
                                         if (vlan.tag || vlan.transparent) {
@@ -1806,7 +1809,7 @@ async function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
                                         if (vlan.qInQ) {
                                             bodyLan[16] = '01'  // QinQ State
                                             bodyLan[67] = vlan.qInQ.cos || vlan.qInQ.cos === 0 ? vlan.qInQ.cos.toHex(2) : 'ff'
-                                            var vlanId = vlan.qInQ.vlanId
+                                            const vlanId = vlan.qInQ.vlanId
                                             if (vlan.qInQ.serviceName.toUpperCase() == 'IGMP') {         // IGMP: 49 47 4d 50
                                                 bodyLan[33] = '49'; bodyLan[34] = '47'; bodyLan[35] = '4d'; bodyLan[36] = '50'
                                                 bodyLan[65] = vlanId ? vlanId.toHex(4).slice(0, 2) : '0b'
@@ -1830,7 +1833,7 @@ async function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
                                         if (vlan.serviceType && vlan.serviceType.toLowerCase() == 'multicast')
                                             bodyLan[3] = '01'
 
-                                        var vlanNum = null
+                                        let vlanNum = null
                                         if (vlan.vlanMode && vlan.vlanMode.toLowerCase() == 'tag') {
                                             bodyLan[4] = `01`
                                             if ((vlan.cvlanId < 1 || vlan.cvlanId > 4085) && (options.enableWarnings))
@@ -1870,8 +1873,8 @@ async function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
                                 }
 
                                 // Header LAN port
-                                var headerLan = snmp_fh.headerLan
-                                var headerLength = ((snmp_fh.headerLan.split(' ').length - 2) + (snmp_fh.bodyLan.split(' ').length * lan.vlansHex.length) + snmp_fh.footerLan.split(' ').length).toHex(4)
+                                let headerLan = snmp_fh.headerLan
+                                const headerLength = ((snmp_fh.headerLan.split(' ').length - 2) + (snmp_fh.bodyLan.split(' ').length * lan.vlansHex.length) + snmp_fh.footerLan.split(' ').length).toHex(4)
                                 headerLan = headerLan.split(' ')
                                 headerLan[0] = headerLength.slice(0, 2)                         // Tamanho do sub-pacote 
                                 headerLan[1] = headerLength.slice(2, 4)
@@ -1891,41 +1894,41 @@ async function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
                                 })
 
                                 // footer
-                                var footerLan = snmp_fh.footerLan
+                                let footerLan = snmp_fh.footerLan
                                 footerLan = footerLan.split(' ')
 
-                                var upstreamMin = lan.boardwidthSet.upstreamMin ? lan.boardwidthSet.upstreamMin : 640
+                                const upstreamMin = lan.boardwidthSet.upstreamMin ? lan.boardwidthSet.upstreamMin : 640
                                 footerLan[1] = upstreamMin.toHex(6).slice(0, 2)
                                 footerLan[2] = upstreamMin.toHex(6).slice(2, 4)
                                 footerLan[3] = upstreamMin.toHex(6).slice(4, 6)
 
-                                var upstreamMax = lan.boardwidthSet.upstreamMax ? lan.boardwidthSet.upstreamMax : 1000000
+                                const upstreamMax = lan.boardwidthSet.upstreamMax ? lan.boardwidthSet.upstreamMax : 1000000
                                 footerLan[5] = upstreamMax.toHex(6).slice(0, 2)
                                 footerLan[6] = upstreamMax.toHex(6).slice(2, 4)
                                 footerLan[7] = upstreamMax.toHex(6).slice(4, 6)
 
-                                var downstream = lan.boardwidthSet.downstream ? lan.boardwidthSet.downstream : 1000000
+                                const downstream = lan.boardwidthSet.downstream ? lan.boardwidthSet.downstream : 1000000
                                 footerLan[9] = downstream.toHex(6).slice(0, 2)
                                 footerLan[10] = downstream.toHex(6).slice(2, 4)
                                 footerLan[11] = downstream.toHex(6).slice(4, 6)
 
-                                var igmpUpCvlanId = lan.igmpUpCvlan.id ? lan.igmpUpCvlan.id : 65535   // 65535 == 'ffff'
+                                const igmpUpCvlanId = lan.igmpUpCvlan.id ? lan.igmpUpCvlan.id : 65535   // 65535 == 'ffff'
                                 footerLan[14] = igmpUpCvlanId.toHex(4).slice(0, 2)
                                 footerLan[15] = igmpUpCvlanId.toHex(4).slice(2, 4)
 
                                 footerLan[16] = lan.igmpUpCvlan.cos || lan.igmpUpCvlan.cos === 0 ? lan.igmpUpCvlan.cos.toHex(2) : 'ff'
 
-                                var igmpUpCvlanTpId = lan.igmpUpCvlan.tpId ? lan.igmpUpCvlan.tpId : 33024
+                                const igmpUpCvlanTpId = lan.igmpUpCvlan.tpId ? lan.igmpUpCvlan.tpId : 33024
                                 footerLan[17] = igmpUpCvlanTpId.toHex(4).slice(0, 2)
                                 footerLan[18] = igmpUpCvlanTpId.toHex(4).slice(2, 4)
 
-                                var igmpUpSvlanId = lan.igmpUpSvlan.id ? lan.igmpUpSvlan.id : 65535   // 65535 == 'ffff'
+                                const igmpUpSvlanId = lan.igmpUpSvlan.id ? lan.igmpUpSvlan.id : 65535   // 65535 == 'ffff'
                                 footerLan[19] = igmpUpSvlanId.toHex(4).slice(0, 2)
                                 footerLan[20] = igmpUpSvlanId.toHex(4).slice(2, 4)
 
                                 footerLan[21] = lan.igmpUpSvlan.cos || lan.igmpUpSvlan.cos === 0 ? lan.igmpUpSvlan.cos.toHex(2) : 'ff'
 
-                                var igmpUpSvlanTpId = lan.igmpUpSvlan.tpId ? lan.igmpUpSvlan.tpId : 33024
+                                const igmpUpSvlanTpId = lan.igmpUpSvlan.tpId ? lan.igmpUpSvlan.tpId : 33024
                                 footerLan[22] = igmpUpSvlanTpId.toHex(4).slice(0, 2)
                                 footerLan[23] = igmpUpSvlanTpId.toHex(4).slice(2, 4)
 
@@ -1936,9 +1939,9 @@ async function setLanPortsGPON(options, slot, pon, onuId, aLanPorts) {
                             hexTosend = hexTosend.trim()
 
                             // Header package
-                            var headerLanPorts = snmp_fh.headerLanPorts
+                            let headerLanPorts = snmp_fh.headerLanPorts
                             headerLanPorts = headerLanPorts.split(' ')
-                            var packSize = hexTosend.split(' ').length + 39          // 39 = trecho que vai do tamanho do pacote (posições [122] e [123]) em headerLanPorts até o final
+                            const packSize = hexTosend.split(' ').length + 39          // 39 = trecho que vai do tamanho do pacote (posições [122] e [123]) em headerLanPorts até o final
                             headerLanPorts[70] = packSize.toHex(4).slice(0, 2)  // Tamanho do sub-pacote
                             headerLanPorts[71] = packSize.toHex(4).slice(2, 4)  // Tamanho do sub-pacote
                             headerLanPorts[122] = headerLanPorts[70]
@@ -1984,7 +1987,7 @@ async function getLanPortsEPON(options, slot, pon, onuId) {
         try {
             const isValid = await gFunc.isValid(options, slot, pon, onuId)
             if (isValid && slot && pon && onuId) {
-                var getLanPorts = snmp_fh.getLanPorts
+                let getLanPorts = snmp_fh.getLanPorts
                     getLanPorts = getLanPorts.split(' ')
 
                     getLanPorts[156] = slot.toHex(2)
@@ -1994,26 +1997,26 @@ async function getLanPortsEPON(options, slot, pon, onuId) {
 
                     const ret = await snmp_fh.sendSnmp(OID.setLanPortsEPON, getLanPorts, options, true)
                     await snmp_fh.sendSnmp(OID.confirmSetLanPortsEPON, getLanPorts, options, true)
-                            var hex = '' // Adicionando espaço em branco a cada 2 bytes
-                            for (var i = 0; i < ret.length; i += 2)
+                            let hex = '' // Adicionando espaço em branco a cada 2 bytes
+                            for (let i = 0; i < ret.length; i += 2)
                                 hex += ret.substring(i, i + 2) + ' '
                             hex = hex.trim()
-                            var value = hex.split('2b 06 01 04 01 ad 73 5b 01 08 01 01 01 06 01 ')[1]
+                            let value = hex.split('2b 06 01 04 01 ad 73 5b 01 08 01 01 01 06 01 ')[1]
                             value = value.split(' ')
                             if (value[1] == '81')
                                 value = value.splice(3)
                             else
                                 value = value.splice(4)
 
-                            var numLanPorts = parseInt(value[166])
-                            var bodyLans = value.slice(167) // obtem da posição 167 até o final
-                            var resp = []
+                            const numLanPorts = parseInt(value[166])
+                            let bodyLans = value.slice(167) // obtem da posição 167 até o final
+                            const resp = []
 
                             // LANS
-                            for (var idx = 0; idx < numLanPorts; ++idx) {
-                                var headerLan = bodyLans.slice(0, 32)       // Tamanho do headerLan 
+                            for (let idx = 0; idx < numLanPorts; ++idx) {
+                                const headerLan = bodyLans.slice(0, 32)       // Tamanho do headerLan 
                                 bodyLans = bodyLans.slice(32)
-                                var lan = null
+                                let lan = null
 
                                 if (headerLan[3] == '01')   // '01' enable, '02' disabled
                                     lan = { lanPort: parseInt(headerLan[2]), enablePort: true, vlans: [] }
@@ -2028,7 +2031,7 @@ async function getLanPortsEPON(options, slot, pon, onuId) {
                                     lan.lanSettings.autoNegotiation.auto = false
 
                                 /* ** Port Auto Negotiation ** */
-                                var portSpeed = 'undefined'
+                                let portSpeed = 'undefined'
                                 if (headerLan[5] == '00')
                                     portSpeed = '10M'
                                 else if (headerLan[5] == '01')
@@ -2036,7 +2039,7 @@ async function getLanPortsEPON(options, slot, pon, onuId) {
                                 else if (headerLan[5] == '02')
                                     portSpeed = '1000M'
 
-                                var duplex = 'undefined'
+                                let duplex = 'undefined'
                                 if (headerLan[6] == '00')
                                     duplex = 'half'
                                 else if (headerLan[6] == '01')
